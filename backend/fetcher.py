@@ -1,7 +1,7 @@
 import requests
 from dotenv import load_dotenv
 import os
-
+import time
 
 load_dotenv()
 
@@ -19,7 +19,12 @@ def fetch_papers(query, limit=10):
     if API_KEY:
         headers["x-api-key"] = API_KEY
     
-    response = requests.get(url, params=params, headers=headers)
+    for attempt in range(3):
+        response = requests.get(url, params=params, headers=headers)
+        result = response.json()
+        if "data" in result:
+            break
+        time.sleep(2)
     result = response.json()
     
     # FIX: These lines must be indented inside the function!
