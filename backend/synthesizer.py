@@ -5,71 +5,132 @@ from fetcher import fetch_papers
 
 load_dotenv()
 
+# Sonnet, not Haiku: at current (free-tier) volume the quality gain is worth
+# more than the marginal cost. Valid current model ID.
+MODEL = "claude-sonnet-4-5"
+
+
+class SynthesisError(Exception):
+    """The Anthropic call failed (auth, rate limit, timeout, connection, etc.).
+
+    Raised so the API layer returns a clean JSON error with the underlying
+    reason instead of a raw 500.
+    """
+
+
+def _paper_link(paper):
+    """Best available link for a paper: open-access PDF > S2 page > DOI."""
+    pdf = (paper.get("openAccessPdf") or {}).get("url")
+    if pdf:
+        return pdf
+    if paper.get("url"):
+        return paper["url"]
+    doi = (paper.get("externalIds") or {}).get("DOI")
+    if doi:
+        return f"https://doi.org/{doi}"
+    paper_id = paper.get("paperId")
+    if paper_id:
+        return f"https://www.semanticscholar.org/paper/{paper_id}"
+    return ""
+
+
+def _build_sources(papers, top=5):
+    """Deterministic, correctly-linked sources list.
+
+    Built in code (not by the model) so titles and URLs are always accurate.
+    """
+    lines = []
+    for paper in papers[:top]:
+        title = paper.get("title", "Untitled")
+        year = paper.get("year", "N/A")
+        citations = paper.get("citationCount", 0)
+        link = _paper_link(paper)
+        if link:
+            lines.append(f"- [{title}]({link}) — {year}, {citations} citations")
+        else:
+            lines.append(f"- {title} — {year}, {citations} citations")
+    return "\n".join(lines)
+
+
 def synthesize(query, level, papers):
-    client = anthropic.Anthropic()
+    if not papers:
+        return (
+            f'No papers were found for "{query}". '
+            "Try a broader or differently-worded query."
+        )
 
     abstracts_text = ""
     for i, paper in enumerate(papers):
         title = paper.get("title", "No title")
-        abstract = paper.get("abstract")
-        if not abstract:
-            abstract = "No abstract available"
-        
-        abstract = abstract[:300]  # Slicing keeps input token cost extremely low
-        citations = paper.get("citatio" \
-        "" \
-        "" \
-        "nCount", 0)
+        abstract = paper.get("abstract") or "No abstract available"
+        abstract = abstract[:300]  # keep input token cost low
+        citations = paper.get("citationCount", 0)
         year = paper.get("year", "N/A")
-        abstracts_text += f"Paper {i+1}: {title} ({year}) - {citations} citations\nAbstract: {abstract}\n\n"
+        abstracts_text += (
+            f"Paper {i+1}: {title} ({year}) - {citations} citations\n"
+            f"Abstract: {abstract}\n\n"
+        )
 
-    # Changed to .create (Non-Streaming) so it sends a clean completed block to your frontend
-    # Swapped to claude-3-5-haiku-latest to guarantee you stay way under the 0.015 cent limit
-    message = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=550,  
-        system=(
-            "You are a dense research utility for Researca OS. "
-            "Your output format is strictly locked. Do not include introductory text, pleasantries, or filler. "
-            "You must use short, single-sentence bullet points only. Keep text highly tactical."
-        ),
-        messages=[
-            {
-                "role": "user",
-                "content": f"""Analyze this query: "{query}" for a {level} student using these papers:
+    # Construct with an explicit timeout so a hung Anthropic call fails fast
+    # and cleanly instead of holding the request open.
+    client = anthropic.Anthropic(timeout=30.0)
+
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=900,
+            system=(
+                "You are a research synthesis engine for Researca OS. "
+                "You analyze academic paper abstracts and produce a tight, useful "
+                "literature briefing. Be specific and tactical: cite papers by their "
+                "title when making a claim. No pleasantries, no filler, no preamble. "
+                "Adapt depth and vocabulary to the reader's level."
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""Reader level: {level}
+Research question: "{query}"
+
+Synthesize the following papers. Reference papers by title when you make a claim.
 
 {abstracts_text}
 
-Output exactly this structure, keeping bullet points under 12 words each:
-## 1. Top 3 Papers
-- **[Paper Title or ID]**: Core focus / why it matters.
-- **[Paper Title or ID]**: Core focus / why it matters.
-- **[Paper Title or ID]**: Core focus / why it matters.
+Produce exactly this Markdown structure (omit the Sources section — it is appended separately):
 
-## 2. Key Findings
-- [Point 1]
-- [Point 2]
+## Key Findings
+- 4-6 bullets capturing the most important, concrete findings across the papers. Each bullet should name the paper(s) it draws from.
 
-## 3. Contradictions & Gaps
-- [Point 1]
-- [Point 2]
+## Where the Papers Agree
+- 2-4 bullets on points of consensus across multiple papers.
 
-## 4. Next Steps
-- [Action 1]
-- [Action 2]"""
-            }
-        ]
-    )
+## Where They Disagree / Open Gaps
+- 2-4 bullets on contradictions, methodological disagreements, or unanswered questions.
 
-    # Now this return statement will execute cleanly without throwing errors!
-    return message.content[0].text
+## Recommended Next Steps
+- 2-3 concrete, actionable next steps for a {level} reader (which papers to read first and why).
+
+Keep every bullet under ~20 words.""",
+                }
+            ],
+        )
+    except anthropic.APIError as e:
+        # Covers auth, rate-limit, timeout, and connection errors.
+        raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
+    except Exception as e:
+        raise SynthesisError(f"Synthesis failed: {type(e).__name__}: {e}") from e
+
+    body = message.content[0].text
+    sources = _build_sources(papers)
+    return f"{body}\n\n## Sources\n{sources}"
+
 
 if __name__ == "__main__":
     query = input("What do u want to research?: ")
     level = input("Your level (highschool / undergrad / phd): ")
-    
+
     print("\nFetching papers from Semantic Scholar...")
     papers = fetch_papers(query)
-    
+
     print("\n=== RESEARCA SYNTHESIS ===\n")
     print(synthesize(query, level, papers))
