@@ -1,51 +1,46 @@
 "use client"
 
-import { Sparkles, ListChecks, BookOpen, ExternalLink } from "lucide-react"
+import { Sparkles, BookOpen, ExternalLink, FileText, Quote } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
-type Source = {
+// Shape returned by the backend /search endpoint. Field names verified against
+// the live Railway response: papers[].{title,url,year,citationCount}.
+type Paper = {
+  paperId?: string
   title?: string
   url?: string
-  snippet?: string
-  description?: string
+  year?: number | null
+  citationCount?: number | null
+  openAccessPdf?: { url?: string | null } | null
+  authors?: { name?: string }[] | null
 }
 
-type ResultData = Record<string, unknown>
-
-function getString(data: ResultData, keys: string[]): string | null {
-  for (const key of keys) {
-    const value = data[key]
-    if (typeof value === "string" && value.trim()) return value
-  }
-  return null
+type ResultData = {
+  synthesis?: unknown
+  papers?: unknown
 }
 
-function getArray(data: ResultData, keys: string[]): unknown[] | null {
-  for (const key of keys) {
-    const value = data[key]
-    if (Array.isArray(value) && value.length > 0) return value
-  }
-  return null
+function numberFmt(n: number): string {
+  return new Intl.NumberFormat("en-US").format(n)
 }
 
 export function SearchResults({ data, query }: { data: unknown; query: string }) {
-  // If the API returned a plain string, just show it as the synthesis.
+  // The API returns an object; if it ever returns a bare string, treat it as synthesis.
   const obj: ResultData =
-    typeof data === "string" ? { synthesis: data } : data && typeof data === "object" ? (data as ResultData) : {}
+    typeof data === "string"
+      ? { synthesis: data }
+      : data && typeof data === "object"
+        ? (data as ResultData)
+        : {}
 
-  const synthesis = getString(obj, ["synthesis", "answer", "summary", "result", "response", "text"])
-  const rawPoints = getArray(obj, ["key_points", "keyPoints", "takeaways", "highlights", "points"])
-  const keyPoints = rawPoints?.filter((p): p is string => typeof p === "string")
-  const rawSources = getArray(obj, ["sources", "citations", "references", "results", "links"])
+  const synthesis = typeof obj.synthesis === "string" && obj.synthesis.trim() ? obj.synthesis : null
 
-  const sources: Source[] | undefined = rawSources
-    ?.map((s) => {
-      if (typeof s === "string") return { url: s, title: s }
-      if (s && typeof s === "object") return s as Source
-      return null
-    })
-    .filter((s): s is Source => s !== null)
+  const papers: Paper[] = Array.isArray(obj.papers)
+    ? (obj.papers.filter((p) => p && typeof p === "object") as Paper[])
+    : []
 
-  const hasStructured = synthesis || (keyPoints && keyPoints.length) || (sources && sources.length)
+  const hasContent = synthesis || papers.length > 0
 
   return (
     <div className="mt-8 w-full max-w-2xl space-y-4 text-left">
@@ -55,7 +50,7 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
         </p>
       )}
 
-      {/* Synthesis */}
+      {/* Synthesis (markdown) */}
       {synthesis && (
         <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-card/80 p-6 backdrop-blur">
           <div
@@ -69,68 +64,102 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
             </span>
             <h2 className="text-sm font-semibold text-foreground">Synthesis</h2>
           </div>
-          <p className="whitespace-pre-wrap text-pretty text-sm leading-relaxed text-foreground/90">{synthesis}</p>
-        </div>
-      )}
-
-      {/* Key points */}
-      {keyPoints && keyPoints.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card/80 p-6 backdrop-blur">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <ListChecks className="size-4" />
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">Key points</h2>
+          <div
+            className="prose prose-sm prose-invert max-w-none text-pretty
+              prose-headings:text-foreground prose-headings:font-semibold
+              prose-p:text-foreground/90 prose-li:text-foreground/90
+              prose-strong:text-foreground prose-a:text-primary
+              prose-a:font-medium hover:prose-a:text-primary/80"
+          >
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+              }}
+            >
+              {synthesis}
+            </ReactMarkdown>
           </div>
-          <ul className="space-y-3">
-            {keyPoints.map((point, i) => (
-              <li key={i} className="flex gap-3 text-sm leading-relaxed text-foreground/90">
-                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                <span className="text-pretty">{point}</span>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
-      {/* Sources */}
-      {sources && sources.length > 0 && (
+      {/* Papers / sources */}
+      {papers.length > 0 && (
         <div className="rounded-2xl border border-border bg-card/80 p-6 backdrop-blur">
           <div className="mb-4 flex items-center gap-2">
             <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
               <BookOpen className="size-4" />
             </span>
-            <h2 className="text-sm font-semibold text-foreground">Sources</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              Sources <span className="text-muted-foreground">({papers.length})</span>
+            </h2>
           </div>
           <div className="space-y-2">
-            {sources.map((source, i) => {
-              const title = source.title || source.url || `Source ${i + 1}`
-              const desc = source.snippet || source.description
-              const content = (
-                <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm font-medium text-foreground">{title}</span>
-                    {source.url && <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
-                  </div>
-                  {desc && <p className="mt-1 text-pretty text-xs leading-relaxed text-muted-foreground">{desc}</p>}
-                  {source.url && (
-                    <p className="mt-1.5 truncate text-xs text-primary/80">{source.url}</p>
+            {papers.map((paper, i) => {
+              const title = paper.title?.trim() || paper.url || `Paper ${i + 1}`
+              const pdfUrl = paper.openAccessPdf?.url || undefined
+              const authors = paper.authors
+                ?.map((a) => a?.name)
+                .filter((n): n is string => !!n)
+                .slice(0, 3)
+                .join(", ")
+
+              const header = (
+                <div className="flex items-start justify-between gap-3">
+                  <span className="text-sm font-medium text-foreground">{title}</span>
+                  {paper.url && <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />}
+                </div>
+              )
+
+              const meta = (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {typeof paper.year === "number" && (
+                    <span className="rounded-md bg-secondary/60 px-2 py-0.5 font-medium text-foreground/80">
+                      {paper.year}
+                    </span>
                   )}
+                  {typeof paper.citationCount === "number" && (
+                    <span className="inline-flex items-center gap-1">
+                      <Quote className="size-3" />
+                      {numberFmt(paper.citationCount)} citation{paper.citationCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {pdfUrl && (
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-primary/80 transition-colors hover:text-primary"
+                    >
+                      <FileText className="size-3" />
+                      PDF
+                    </a>
+                  )}
+                </div>
+              )
+
+              const body = (
+                <>
+                  {header}
+                  {authors && <p className="mt-1 truncate text-xs text-muted-foreground">{authors}</p>}
+                  {meta}
                 </>
               )
-              return source.url ? (
+
+              return paper.url ? (
                 <a
-                  key={i}
-                  href={source.url}
+                  key={paper.paperId ?? i}
+                  href={paper.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block rounded-xl border border-border bg-secondary/40 p-4 transition-colors hover:border-primary/40 hover:bg-secondary/70"
                 >
-                  {content}
+                  {body}
                 </a>
               ) : (
-                <div key={i} className="rounded-xl border border-border bg-secondary/40 p-4">
-                  {content}
+                <div key={paper.paperId ?? i} className="rounded-xl border border-border bg-secondary/40 p-4">
+                  {body}
                 </div>
               )
             })}
@@ -139,7 +168,7 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
       )}
 
       {/* Fallback: nothing recognizable, show prettified JSON */}
-      {!hasStructured && (
+      {!hasContent && (
         <div className="rounded-2xl border border-border bg-card/80 p-6 backdrop-blur">
           <h2 className="mb-3 text-sm font-semibold text-foreground">Result</h2>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
