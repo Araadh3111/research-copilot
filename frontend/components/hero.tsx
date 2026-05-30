@@ -4,6 +4,7 @@ import type React from "react"
 import { useState } from "react"
 import { Search, ChevronDown, Loader2 } from "lucide-react"
 import { SearchResults } from "./search-results"
+import { SEARCH_URL } from "@/lib/api"
 
 const levels = [
   { value: "beginner", label: "Beginner" },
@@ -29,24 +30,34 @@ export function Hero() {
     setResult(null)
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/search", {
+      const res = await fetch(SEARCH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, level }),
       })
 
+      // Try to read the body once; the API may return a JSON error payload.
+      const data = await res.json().catch(() => null)
+
       if (!res.ok) {
-        throw new Error(`Request failed with status ${res.status}`)
+        const apiMessage =
+          data && typeof data === "object"
+            ? (data.detail ?? data.error ?? data.message)
+            : null
+        throw new Error(
+          typeof apiMessage === "string" && apiMessage.trim()
+            ? apiMessage
+            : `Request failed (status ${res.status}).`,
+        )
       }
 
-      const data = await res.json()
       setResult(data)
       setSubmittedQuery(query)
     } catch (err) {
       setError(
         err instanceof Error
-          ? `Could not reach the research service (${err.message}). Make sure the API is running at http://127.0.0.1:8000.`
-          : "Something went wrong.",
+          ? err.message
+          : "Something went wrong while contacting the research service.",
       )
     } finally {
       setLoading(false)
