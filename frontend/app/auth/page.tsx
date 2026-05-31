@@ -27,12 +27,30 @@ export default function AuthPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
 
+  const [countdown, setCountdown] = useState(3)
+
   const [mode, setMode] = useState<Mode>("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+
+  // Auto-redirect to homepage 3 s after sign-in.
+  useEffect(() => {
+    if (!user || loadingUser) return
+    setCountdown(3)
+    const interval = setInterval(() => {
+      setCountdown((n) => {
+        if (n <= 1) {
+          clearInterval(interval)
+          router.push("/")
+        }
+        return n - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [user, loadingUser, router])
 
   // Load the current session, and keep it in sync with auth state changes.
   useEffect(() => {
@@ -124,8 +142,18 @@ export default function AuthPage() {
         {!loadingUser && user ? (
           <CardContent className="flex flex-col gap-4">
             <Button
+              onClick={() => router.push("/")}
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Start Researching →
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Redirecting in {countdown}s…
+            </p>
+            <Button
               onClick={handleLogout}
               disabled={pending}
+              variant="ghost"
               className="w-full"
             >
               {pending ? "Logging out…" : "Log out"}

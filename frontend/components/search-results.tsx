@@ -4,9 +4,7 @@ import { Sparkles, BookOpen, ExternalLink, FileText, Quote } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
-// Shape returned by the backend /search endpoint. Field names verified against
-// the live Railway response: papers[].{title,url,year,citationCount}.
-type Paper = {
+export type Paper = {
   paperId?: string
   title?: string
   url?: string
@@ -16,31 +14,19 @@ type Paper = {
   authors?: { name?: string }[] | null
 }
 
-type ResultData = {
-  synthesis?: unknown
-  papers?: unknown
+type Props = {
+  query: string
+  papers: Paper[]
+  synthesis: string
+  streaming: boolean
 }
 
 function numberFmt(n: number): string {
   return new Intl.NumberFormat("en-US").format(n)
 }
 
-export function SearchResults({ data, query }: { data: unknown; query: string }) {
-  // The API returns an object; if it ever returns a bare string, treat it as synthesis.
-  const obj: ResultData =
-    typeof data === "string"
-      ? { synthesis: data }
-      : data && typeof data === "object"
-        ? (data as ResultData)
-        : {}
-
-  const synthesis = typeof obj.synthesis === "string" && obj.synthesis.trim() ? obj.synthesis : null
-
-  const papers: Paper[] = Array.isArray(obj.papers)
-    ? (obj.papers.filter((p) => p && typeof p === "object") as Paper[])
-    : []
-
-  const hasContent = synthesis || papers.length > 0
+export function SearchResults({ query, papers, synthesis, streaming }: Props) {
+  const hasSynthesis = synthesis.trim().length > 0
 
   return (
     <div className="mt-8 w-full max-w-2xl space-y-4 text-left">
@@ -50,8 +36,8 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
         </p>
       )}
 
-      {/* Synthesis (markdown) */}
-      {synthesis && (
+      {/* Synthesis — appears as soon as first text chunk arrives */}
+      {(hasSynthesis || streaming) && (
         <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-card/80 p-6 backdrop-blur">
           <div
             aria-hidden="true"
@@ -63,27 +49,40 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
               <Sparkles className="size-4" />
             </span>
             <h2 className="text-sm font-semibold text-foreground">Synthesis</h2>
+            {streaming && (
+              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+            )}
           </div>
-          <div
-            className="prose prose-sm prose-invert max-w-none text-pretty
-              prose-headings:text-foreground prose-headings:font-semibold
-              prose-p:text-foreground/90 prose-li:text-foreground/90
-              prose-strong:text-foreground prose-a:text-primary
-              prose-a:font-medium hover:prose-a:text-primary/80"
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-              }}
+
+          {hasSynthesis ? (
+            <div
+              className="prose prose-sm prose-invert max-w-none text-pretty
+                prose-headings:text-foreground prose-headings:font-semibold
+                prose-p:text-foreground/90 prose-li:text-foreground/90
+                prose-strong:text-foreground prose-a:text-primary
+                prose-a:font-medium hover:prose-a:text-primary/80"
             >
-              {synthesis}
-            </ReactMarkdown>
-          </div>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                }}
+              >
+                {synthesis}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            /* Waiting for first chunk — three bouncing dots */
+            <div className="flex items-center gap-1 pt-1" aria-label="Generating synthesis">
+              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:0ms]" />
+              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:150ms]" />
+              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:300ms]" />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Papers / sources */}
+      {/* Papers — rendered immediately when the papers event fires */}
       {papers.length > 0 && (
         <div className="rounded-2xl border border-border bg-card/80 p-6 backdrop-blur">
           <div className="mb-4 flex items-center gap-2">
@@ -164,16 +163,6 @@ export function SearchResults({ data, query }: { data: unknown; query: string })
               )
             })}
           </div>
-        </div>
-      )}
-
-      {/* Fallback: nothing recognizable, show prettified JSON */}
-      {!hasContent && (
-        <div className="rounded-2xl border border-border bg-card/80 p-6 backdrop-blur">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Result</h2>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
-            {JSON.stringify(data, null, 2)}
-          </pre>
         </div>
       )}
     </div>
