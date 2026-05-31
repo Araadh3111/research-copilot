@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
 LIMITS: dict[str, dict] = {
     "anonymous": {"daily": 2,  "monthly": None},
-    "free":      {"daily": 10, "monthly": 50},
+    "free":      {"daily": 10, "monthly": 7},
     "pro":       {"daily": 30, "monthly": 150},
     "lab":       {"daily": 60, "monthly": 300},
 }
