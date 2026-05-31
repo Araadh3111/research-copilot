@@ -1,7 +1,10 @@
+import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta, time as dt_time, timezone
 
 from supabase_client import sb
+
+logger = logging.getLogger(__name__)
 
 # ── Tier limits — tune these constants, never hardcode elsewhere ─────────────
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
@@ -45,11 +48,16 @@ def check_anon(ip: str) -> dict:
 def verify_jwt(token: str) -> str | None:
     """Return user_id if the Supabase JWT is valid, else None."""
     if not sb:
+        logger.error("verify_jwt: Supabase client is None — SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set")
         return None
     try:
         resp = sb.auth.get_user(token)
-        return resp.user.id if resp.user else None
-    except Exception:
+        user_id = resp.user.id if resp.user else None
+        if not user_id:
+            logger.warning("verify_jwt: get_user returned no user for token")
+        return user_id
+    except Exception as e:
+        logger.error("verify_jwt: exception validating token: %s", e)
         return None
 
 
