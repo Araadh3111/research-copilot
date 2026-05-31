@@ -1,66 +1,54 @@
-import requests
-from dotenv import load_dotenv
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
+from dotenv import load_dotenv
 
 load_dotenv()
 
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 
-# Fields we ask Semantic Scholar for. `url` + `openAccessPdf` give us real links
-# for the sources list; `externalIds` lets us fall back to a DOI link.
 S2_FIELDS = "title,abstract,year,citationCount,authors,openAccessPdf,url,externalIds"
+
+# Per-tier sizing — override via env; free defaults shown here.
+POOL_SIZE = int(os.getenv("POOL_SIZE", "20"))
+RESULT_COUNT = int(os.getenv("RESULT_COUNT", "5"))
 
 
 class FetchError(Exception):
-    """Semantic Scholar could not be reached or returned an unusable response.
-
-    Raised so the API layer can convert it into a clean JSON error instead of
-    letting an unhandled exception become a raw 500. This is the failure mode
-    that bites on cloud hosts (e.g. Railway), where Semantic Scholar rate-limits
-    the shared datacenter IP and returns a non-200 / non-JSON body.
-    """
+    """Semantic Scholar could not be reached or returned an unusable response."""
 
 
-def fetch_papers(query, limit=10):
-    params = {
-        "query": query,
-        "limit": limit,
-        "fields": S2_FIELDS,
-    }
-
-    headers = {}
-    if API_KEY:
-        headers["x-api-key"] = API_KEY
+def _fetch_one(query: str, limit: int) -> list:
+    """Fetch up to `limit` papers for a single query string."""
+    params = {"query": query, "limit": limit, "fields": S2_FIELDS}
+    headers = {"x-api-key": API_KEY} if API_KEY else {}
 
     last_status = None
     last_body = None
 
-    for attempt in range(3):
+    for _ in range(3):
         try:
             response = requests.get(url=S2_URL, params=params, headers=headers, timeout=15)
         except requests.RequestException as e:
-            # Network/DNS/timeout: back off and retry.
             last_body = f"{type(e).__name__}: {e}"
             time.sleep(1.5)
             continue
 
         last_status = response.status_code
 
-        # Transient upstream / rate limit: back off and retry.
         if response.status_code in (429, 500, 502, 503, 504):
             last_body = response.text[:200]
             time.sleep(2)
             continue
 
-        # Any other non-200 is a hard failure we can't recover from.
         if response.status_code != 200:
             raise FetchError(
                 f"Semantic Scholar returned HTTP {response.status_code}: {response.text[:200]}"
             )
 
-        # 200 but body may not be JSON (Cloudflare/HTML block page).
         try:
             result = response.json()
         except ValueError:
@@ -68,11 +56,9 @@ def fetch_papers(query, limit=10):
             time.sleep(2)
             continue
 
-        # Happy path. Empty `data` is a valid "no results" answer, not an error.
         if "data" in result:
-            return _rank(result["data"] or [])
+            return result["data"] or []
 
-        # 200 JSON without `data` (e.g. {"message": "..."}). Retry, then give up.
         last_body = str(result)[:200]
         time.sleep(2)
 
@@ -82,18 +68,54 @@ def fetch_papers(query, limit=10):
     )
 
 
-def _rank(data):
-    def score_paper(paper):
-        citations = paper.get("citationCount") or 0
-        year = paper.get("year") or 2000
-        recency = (year - 2000) * 10
-        return citations + recency
+def fetch_pool(cleaned_query: str, search_angles: list[str], pool_size: int = POOL_SIZE) -> list:
+    """Fetch a deduplicated candidate pool across the cleaned query + all search angles.
 
-    return sorted(data, key=score_paper, reverse=True)
+    Requests to Semantic Scholar are fired in parallel (one thread per angle).
+    Papers without an abstract are excluded — they can't be content-ranked.
+    Returns raw S2 paper dicts; ranking is handled by ranker.py.
+    """
+    queries = list(dict.fromkeys([cleaned_query] + search_angles))
+
+    # Parallel fetch: each query gets its own thread.
+    angle_results: dict[str, list] = {}
+    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+        future_to_query = {pool.submit(_fetch_one, q, pool_size): q for q in queries}
+        for future in as_completed(future_to_query):
+            q = future_to_query[future]
+            try:
+                angle_results[q] = future.result()
+            except FetchError:
+                angle_results[q] = []  # one angle failing doesn't abort the pool
+
+    # Merge in query order: cleaned_query first, then angles.
+    seen_ids: set = set()
+    pool_papers: list = []
+
+    for q in queries:
+        for paper in angle_results.get(q, []):
+            pid = paper.get("paperId")
+            if not pid or pid in seen_ids:
+                continue
+            if not (paper.get("abstract") or "").strip():
+                continue  # no abstract → can't content-rank, skip
+            seen_ids.add(pid)
+            pool_papers.append(paper)
+
+    return pool_papers
+
+
+# Legacy entry point kept for the __main__ runner.
+def fetch_papers(query: str, limit: int = POOL_SIZE) -> list:
+    try:
+        results = _fetch_one(query, limit=limit)
+    except FetchError:
+        return []
+    return [p for p in results if (p.get("abstract") or "").strip()]
 
 
 if __name__ == "__main__":
-    query = input("Enter what do u wna explore today: ")
+    query = input("Enter query: ")
     papers = fetch_papers(query)
-    for i, paper in enumerate(papers):
-        print(f"{i+1}. {paper['title']} ({paper.get('year', 'N/A')}) — {paper.get('citationCount', 0)} citations")
+    for i, p in enumerate(papers):
+        print(f"{i+1}. {p['title']} ({p.get('year', 'N/A')}) — {p.get('citationCount', 0)} citations")

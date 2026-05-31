@@ -63,7 +63,7 @@ def synthesize(query, level, papers):
     for i, paper in enumerate(papers):
         title = paper.get("title", "No title")
         abstract = paper.get("abstract") or "No abstract available"
-        abstract = abstract[:300]  # keep input token cost low
+        abstract = abstract[:1500]  # keep input token cost low
         citations = paper.get("citationCount", 0)
         year = paper.get("year", "N/A")
         abstracts_text += (
@@ -78,7 +78,7 @@ def synthesize(query, level, papers):
     try:
         message = client.messages.create(
             model=MODEL,
-            max_tokens=900,
+            max_tokens=1500,
             system=(
                 "You are a research synthesis engine for Researca OS. "
                 "You analyze academic paper abstracts and produce a tight, useful "
@@ -89,7 +89,12 @@ def synthesize(query, level, papers):
             messages=[
                 {
                     "role": "user",
-                    "content": f"""Reader level: {level}
+                    "content": f"""Level guide:
+- undergrad: explain technical terms, lead with concepts before results
+- intermediate: assume domain familiarity, focus on methodology and findings
+- expert/phd: assume full domain knowledge, focus on gaps, tensions, and implications
+
+Reader level: {level}
 Research question: "{query}"
 
 Synthesize the following papers. Reference papers by title when you make a claim.
@@ -110,7 +115,7 @@ Produce exactly this Markdown structure (omit the Sources section — it is appe
 ## Recommended Next Steps
 - 2-3 concrete, actionable next steps for a {level} reader (which papers to read first and why).
 
-Keep every bullet under ~20 words.""",
+Keep bullets concise but specific — 20-35 words. Never sacrifice a concrete finding for brevity.""",
                 }
             ],
         )
