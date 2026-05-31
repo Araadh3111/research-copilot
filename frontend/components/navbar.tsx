@@ -10,9 +10,6 @@ import { Button } from "@/components/ui/button"
 
 const navLinks = [
   { label: "Features", href: "#features" },
-  { label: "Pricing", href: "#" },
-  { label: "Docs", href: "#" },
-  { label: "Blog", href: "#" },
 ]
 
 export function Navbar() {

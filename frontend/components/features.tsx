@@ -1,4 +1,4 @@
-import { Search, BookOpen, Layers, Users } from "lucide-react"
+import { Search, BookOpen, Layers } from "lucide-react"
 
 const features = [
   {
@@ -18,12 +18,6 @@ const features = [
     title: "Synthesize",
     description:
       "Combine findings from multiple sources into coherent, cited summaries you can actually use.",
-  },
-  {
-    icon: Users,
-    title: "Collaborate",
-    description:
-      "Share research spaces, annotate together, and keep your whole team aligned in real time.",
   },
 ]
 
