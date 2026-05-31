@@ -1,4 +1,5 @@
 import os
+from typing import AsyncGenerator
 import anthropic
 from dotenv import load_dotenv
 from fetcher import fetch_papers
@@ -52,18 +53,12 @@ def _build_sources(papers, top=5):
     return "\n".join(lines)
 
 
-def synthesize(query, level, papers):
-    if not papers:
-        return (
-            f'No papers were found for "{query}". '
-            "Try a broader or differently-worded query."
-        )
-
+def _build_prompt(query: str, level: str, papers: list) -> tuple[str, str]:
+    """Return (system_prompt, user_prompt) shared by both sync and stream paths."""
     abstracts_text = ""
     for i, paper in enumerate(papers):
         title = paper.get("title", "No title")
-        abstract = paper.get("abstract") or "No abstract available"
-        abstract = abstract[:1500]  # keep input token cost low
+        abstract = (paper.get("abstract") or "No abstract available")[:1500]
         citations = paper.get("citationCount", 0)
         year = paper.get("year", "N/A")
         abstracts_text += (
@@ -71,25 +66,15 @@ def synthesize(query, level, papers):
             f"Abstract: {abstract}\n\n"
         )
 
-    # Construct with an explicit timeout so a hung Anthropic call fails fast
-    # and cleanly instead of holding the request open.
-    client = anthropic.Anthropic(timeout=30.0)
+    system = (
+        "You are a research synthesis engine for Researca OS. "
+        "You analyze academic paper abstracts and produce a tight, useful "
+        "literature briefing. Be specific and tactical: cite papers by their "
+        "title when making a claim. No pleasantries, no filler, no preamble. "
+        "Adapt depth and vocabulary to the reader's level."
+    )
 
-    try:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            system=(
-                "You are a research synthesis engine for Researca OS. "
-                "You analyze academic paper abstracts and produce a tight, useful "
-                "literature briefing. Be specific and tactical: cite papers by their "
-                "title when making a claim. No pleasantries, no filler, no preamble. "
-                "Adapt depth and vocabulary to the reader's level."
-            ),
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""Level guide:
+    user = f"""Level guide:
 - beginner (High School): define all terms, lead with the big idea before details, use analogies
 - intermediate (Undergrad): assume basic domain familiarity, focus on methodology and findings
 - advanced (Grad): balance theory and application, surface trade-offs and limitations
@@ -116,12 +101,63 @@ Produce exactly this Markdown structure (omit the Sources section — it is appe
 ## Recommended Next Steps
 - 2-3 concrete, actionable next steps for a {level} reader (which papers to read first and why).
 
-Keep bullets concise but specific — 20-35 words. Never sacrifice a concrete finding for brevity.""",
-                }
-            ],
+Keep bullets concise but specific — 20-35 words. Never sacrifice a concrete finding for brevity."""
+
+    return system, user
+
+
+async def synthesize_stream(
+    query: str, level: str, papers: list
+) -> AsyncGenerator[str, None]:
+    """Async generator yielding synthesis text chunks as they arrive from the model.
+
+    Appends the sources block after the stream completes so it appears at the end.
+    Raises SynthesisError on API failure so the caller can emit an SSE error event.
+    """
+    if not papers:
+        yield f'No papers were found for "{query}". Try a broader or differently-worded query.'
+        return
+
+    system, user = _build_prompt(query, level, papers)
+    client = anthropic.AsyncAnthropic(timeout=30.0)
+
+    try:
+        async with client.messages.stream(
+            model=MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+    except anthropic.APIError as e:
+        raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
+    except Exception as e:
+        raise SynthesisError(f"Synthesis failed: {type(e).__name__}: {e}") from e
+
+    sources = _build_sources(papers)
+    yield f"\n\n## Sources\n{sources}"
+
+
+def synthesize(query: str, level: str, papers: list) -> str:
+    """Blocking synthesis used by the __main__ runner only."""
+    if not papers:
+        return (
+            f'No papers were found for "{query}". '
+            "Try a broader or differently-worded query."
+        )
+
+    system, user = _build_prompt(query, level, papers)
+    client = anthropic.Anthropic(timeout=30.0)
+
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": user}],
         )
     except anthropic.APIError as e:
-        # Covers auth, rate-limit, timeout, and connection errors.
         raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
     except Exception as e:
         raise SynthesisError(f"Synthesis failed: {type(e).__name__}: {e}") from e
