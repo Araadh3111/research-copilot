@@ -7,10 +7,10 @@ import { SearchResults } from "./search-results"
 import { SEARCH_URL } from "@/lib/api"
 
 const levels = [
-  { value: "beginner", label: "Beginner" },
-  { value: "intermediate", label: "Intermediate" },
-  { value: "advanced", label: "Advanced" },
-  { value: "expert", label: "Expert" },
+  { value: "beginner", label: "Beginner (High School)" },
+  { value: "intermediate", label: "Intermediate (Undergrad)" },
+  { value: "advanced", label: "Advanced (Grad)" },
+  { value: "expert", label: "Expert (PhD)" },
 ]
 
 export function Hero() {
