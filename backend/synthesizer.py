@@ -90,9 +90,10 @@ def synthesize(query, level, papers):
                 {
                     "role": "user",
                     "content": f"""Level guide:
-- undergrad: explain technical terms, lead with concepts before results
-- intermediate: assume domain familiarity, focus on methodology and findings
-- expert/phd: assume full domain knowledge, focus on gaps, tensions, and implications
+- beginner (High School): define all terms, lead with the big idea before details, use analogies
+- intermediate (Undergrad): assume basic domain familiarity, focus on methodology and findings
+- advanced (Grad): balance theory and application, surface trade-offs and limitations
+- expert (PhD): assume full domain knowledge, focus on gaps, tensions, and open implications
 
 Reader level: {level}
 Research question: "{query}"
