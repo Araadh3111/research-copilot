@@ -1,16 +1,18 @@
+import asyncio
+import json
 import os
 import time
 from collections import defaultdict, deque
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from query_processor import process_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
-from synthesizer import synthesize, SynthesisError
+from synthesizer import synthesize_stream, SynthesisError
 
 app = FastAPI(title="Researca Core OS Engine API")
 
@@ -31,7 +33,7 @@ app.add_middleware(
 
 class SearchRequest(BaseModel):
     query: str
-    level: str = "undergrad"
+    level: str = "intermediate"
 
 
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10"))
@@ -58,6 +60,10 @@ def _is_rate_limited(ip: str) -> bool:
     return False
 
 
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
@@ -68,6 +74,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.post("/search")
 async def search(request: SearchRequest, http_request: Request):
+    # Rate limiting and input validation return plain JSONResponse before
+    # the stream is opened — these are not SSE events.
     ip = _client_ip(http_request)
     if _is_rate_limited(ip):
         return JSONResponse(
@@ -88,42 +96,60 @@ async def search(request: SearchRequest, http_request: Request):
             content={"error": "empty_query", "detail": "Query must not be empty."},
         )
 
-    # 1. Fix typos; generate search angles.
-    processed = process_query(raw_query)
-    cleaned_query = processed["cleaned_query"]
-    search_angles = processed["search_angles"]
+    level = request.level
 
-    # 2. Fetch a large candidate pool across all angles (parallel S2 requests).
-    try:
-        pool = fetch_pool(cleaned_query, search_angles)
-    except FetchError as e:
-        return JSONResponse(
-            status_code=502,
-            content={"error": "semantic_scholar_unavailable", "detail": str(e)},
-        )
+    async def generate():
+        try:
+            # 1. Fix typos; generate search angles (sync Haiku call in thread).
+            processed = await asyncio.to_thread(process_query, raw_query)
+            cleaned_query = processed["cleaned_query"]
+            search_angles = processed["search_angles"]
 
-    if not pool:
-        return {
-            "synthesis": f'No papers found for "{cleaned_query}". Try a broader or differently-worded query.',
-            "papers": [],
-        }
+            # 2. Fetch candidate pool across all angles in parallel.
+            try:
+                pool = await asyncio.to_thread(fetch_pool, cleaned_query, search_angles)
+            except FetchError as e:
+                yield _sse({"type": "error", "detail": str(e)})
+                return
 
-    # 3. Content-based ranking: score by relevance to the ORIGINAL query.
-    top_papers = rank(raw_query, pool, result_count=RESULT_COUNT)
+            if not pool:
+                yield _sse({"type": "papers", "papers": []})
+                yield _sse({
+                    "type": "text",
+                    "text": f'No papers found for "{cleaned_query}". Try a broader or differently-worded query.',
+                })
+                yield _sse({"type": "done"})
+                return
 
-    if not top_papers:
-        top_papers = pool[:RESULT_COUNT]
+            # 3. Content-based ranking (sync Haiku call in thread).
+            top_papers = await asyncio.to_thread(rank, raw_query, pool)
+            if not top_papers:
+                top_papers = pool[:RESULT_COUNT]
 
-    # 4. Synthesize (unchanged).
-    try:
-        synthesis_result = synthesize(cleaned_query, request.level, top_papers)
-    except SynthesisError as e:
-        return JSONResponse(
-            status_code=502,
-            content={"error": "synthesis_failed", "detail": str(e), "papers": top_papers},
-        )
+            # 4. Send papers immediately — sources appear while synthesis streams.
+            yield _sse({"type": "papers", "papers": top_papers})
 
-    return {"synthesis": synthesis_result, "papers": top_papers}
+            # 5. Stream synthesis chunks as they arrive from Sonnet.
+            try:
+                async for chunk in synthesize_stream(cleaned_query, level, top_papers):
+                    yield _sse({"type": "text", "text": chunk})
+            except SynthesisError as e:
+                yield _sse({"type": "error", "detail": str(e)})
+                return
+
+            yield _sse({"type": "done"})
+
+        except Exception as e:
+            yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable Nginx/Railway proxy buffering
+        },
+    )
 
 
 @app.get("/")
