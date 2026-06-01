@@ -3,16 +3,15 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
-import { Sparkles } from "lucide-react"
+import Image from "next/image"
 
 import { createClient } from "@/utils/supabase/client"
-import { Button } from "@/components/ui/button"
 
-const navLinks = [
-  { label: "Features", href: "#features" },
-]
+type NavbarProps = {
+  variant?: "landing" | "app"
+}
 
-export function Navbar() {
+export function Navbar({ variant }: NavbarProps) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -39,54 +38,55 @@ export function Navbar() {
     router.refresh()
   }
 
+  const isLanding = variant === "landing" || (!loading && !user)
+
   return (
-    <header className="sticky top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl">
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <a href="#" className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sparkles className="size-4" />
-          </span>
-          <span className="text-lg font-semibold tracking-tight text-foreground">Researca</span>
+    <header className="sticky top-0 z-50 border-b border-[#E5E4E2] bg-white">
+      <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+        <a href="/" className="flex items-center gap-2.5">
+          <Image src="/logo.svg" alt="Researca logo" width={28} height={28} />
+          <span className="text-[15px] font-semibold tracking-tight text-[#1C1917]">Researca</span>
         </a>
 
-        <ul className="hidden items-center gap-8 md:flex">
-          {navLinks.map((link) => (
-            <li key={link.label}>
-              <a
-                href={link.href}
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {link.label}
+        {isLanding && (
+          <ul className="hidden items-center gap-7 md:flex">
+            <li>
+              <a href="#features" className="text-sm text-[#78716C] transition-colors hover:text-[#1C1917]">
+                Features
               </a>
             </li>
-          ))}
-        </ul>
+            <li>
+              <a href="#pricing" className="text-sm text-[#78716C] transition-colors hover:text-[#1C1917]">
+                Pricing
+              </a>
+            </li>
+          </ul>
+        )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-5">
           {loading ? null : user ? (
             <>
-              <span className="hidden text-sm text-muted-foreground sm:block">
-                {user.email}
-              </span>
-              <Button
+              <span className="hidden text-sm text-[#78716C] sm:block">{user.email}</span>
+              <button
                 onClick={handleLogout}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="text-sm text-[#78716C] transition-colors hover:text-[#1C1917]"
               >
                 Log out
-              </Button>
+              </button>
             </>
           ) : (
             <>
               <a
                 href="/auth"
-                className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:block"
+                className="text-sm text-[#78716C] transition-colors hover:text-[#1C1917]"
               >
                 Sign in
               </a>
-              <a href="/auth">
-                <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-                  Get Started
-                </Button>
+              <a
+                href="/auth"
+                className="rounded-full bg-[#2563EB] px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1D4ED8]"
+              >
+                Try Free
               </a>
             </>
           )}

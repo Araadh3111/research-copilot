@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
-import { Sparkles } from "lucide-react"
+import Image from "next/image"
 
 import { createClient } from "@/utils/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -129,10 +129,8 @@ export default function AuthPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <a href="/" className="mx-auto mb-2 flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Sparkles className="size-4" />
-            </span>
-            <span className="text-lg font-semibold tracking-tight">Researca</span>
+            <Image src="/logo.svg" alt="Researca logo" width={28} height={28} />
+            <span className="text-[15px] font-semibold tracking-tight">Researca</span>
           </a>
           {loadingUser ? (
             <CardTitle>Loading…</CardTitle>
