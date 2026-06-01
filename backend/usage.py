@@ -8,11 +8,23 @@ logger = logging.getLogger(__name__)
 
 # ── Tier limits — tune these constants, never hardcode elsewhere ─────────────
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
+# cost_monthly = hard USD ceiling per calendar month (None = no cost cap).
 LIMITS: dict[str, dict] = {
-    "anonymous": {"daily": 2,  "monthly": None},
-    "free":      {"daily": 10, "monthly": 20},
-    "pro":       {"daily": 30, "monthly": 150},
-    "lab":       {"daily": 60, "monthly": 300},
+    "anonymous": {"daily": 2,  "monthly": None, "cost_monthly": None},
+    "free":      {"daily": 10, "monthly": 20,   "cost_monthly": 0.50},
+    "pro":       {"daily": 30, "monthly": 150,  "cost_monthly": 8.00},
+    "lab":       {"daily": 60, "monthly": 300,  "cost_monthly": 20.00},
+}
+
+# ── Per-search cost estimates (USD) ──────────────────────────────────────────
+# Used to increment estimated_cost_usd in user_usage and check cost ceilings.
+# MIGRATION (run once in Supabase SQL editor before deploying):
+#   ALTER TABLE user_usage
+#     ADD COLUMN IF NOT EXISTS estimated_cost_usd FLOAT DEFAULT 0;
+SEARCH_COST = {
+    "haiku":            0.007,
+    "sonnet":           0.040,
+    "matrix_surcharge": 0.005,
 }
 
 # ── Anonymous tracking (in-memory, IP-keyed) ─────────────────────────────────
@@ -78,12 +90,12 @@ def get_tier(user_id: str) -> str:
         return "free"
 
 
-def check_user(user_id: str, tier: str) -> dict:
+def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
     """Check and increment usage for an authenticated user.
 
-    Reads today's row + sums this month to check both caps.
-    Upserts the daily row on success.
-    On any Supabase error: allows through (fail open) rather than blocking users.
+    Checks daily search count, monthly search count, and monthly cost ceiling.
+    Upserts the daily row (count + cost) on success.
+    Fails open on any Supabase error so users are never blocked by infra issues.
     """
     print(f"DEBUG user_id={user_id} ip=N/A tier={tier}", flush=True)
     limits = LIMITS.get(tier, LIMITS["free"])
@@ -94,45 +106,55 @@ def check_user(user_id: str, tier: str) -> dict:
     today = date.today()
 
     try:
-        # ── Daily count ──────────────────────────────────────────────────────
+        # ── Daily row (count + today's accumulated cost) ─────────────────────
         row = (
             sb.table("user_usage")
-            .select("daily_count")
+            .select("daily_count, estimated_cost_usd")
             .eq("user_id", user_id)
             .eq("date", today.isoformat())
             .execute()
         )
         daily_count: int = row.data[0]["daily_count"] if row.data else 0
+        today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if row.data else 0.0
 
         if daily_count >= limits["daily"]:
             tomorrow = today + timedelta(days=1)
             resets = datetime.combine(tomorrow, dt_time.min, timezone.utc).isoformat()
             return {"allowed": False, "limit_type": "daily", "tier": tier, "resets_at": resets}
 
-        # ── Monthly count ────────────────────────────────────────────────────
+        # ── Monthly counts + cost ────────────────────────────────────────────
         monthly_count = 0
-        if limits["monthly"]:
+        monthly_cost = 0.0
+        if limits["monthly"] or limits.get("cost_monthly"):
             month_start = today.replace(day=1).isoformat()
             m_rows = (
                 sb.table("user_usage")
-                .select("daily_count")
+                .select("daily_count, estimated_cost_usd")
                 .eq("user_id", user_id)
                 .gte("date", month_start)
                 .execute()
             )
             monthly_count = sum(r["daily_count"] for r in (m_rows.data or []))
+            monthly_cost = sum((r.get("estimated_cost_usd") or 0.0) for r in (m_rows.data or []))
 
-            if monthly_count >= limits["monthly"]:
+            if limits["monthly"] and monthly_count >= limits["monthly"]:
                 next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
                 resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
                 return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": resets}
 
-        # ── Increment ────────────────────────────────────────────────────────
+            cost_ceiling = limits.get("cost_monthly")
+            if cost_ceiling and monthly_cost >= cost_ceiling:
+                next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+                resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
+                return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": resets}
+
+        # ── Increment count + cost ────────────────────────────────────────────
         sb.table("user_usage").upsert(
             {
                 "user_id": user_id,
                 "date": today.isoformat(),
                 "daily_count": daily_count + 1,
+                "estimated_cost_usd": today_cost + estimated_cost,
             },
             on_conflict="user_id,date",
         ).execute()

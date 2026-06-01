@@ -14,7 +14,8 @@ from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
 from synthesizer import synthesize_stream, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
-from usage import check_anon, verify_jwt, get_tier, check_user
+from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST
+from synthesizer import FORCE_SONNET
 
 app = FastAPI(title="Researca Core OS Engine API")
 
@@ -77,6 +78,13 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _estimated_search_cost(tier: str, output_mode: str) -> float:
+    """Estimate USD cost for one search based on model (via tier) and output mode."""
+    is_sonnet = FORCE_SONNET or tier in ("pro", "lab")
+    base = SEARCH_COST["sonnet"] if is_sonnet else SEARCH_COST["haiku"]
+    return base + (SEARCH_COST["matrix_surcharge"] if output_mode == "matrix" else 0.0)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
@@ -134,8 +142,10 @@ async def search(request: SearchRequest, http_request: Request):
 
     if user_id:
         tier = await asyncio.to_thread(get_tier, user_id)
-        quota = await asyncio.to_thread(check_user, user_id, tier)
+        estimated_cost = _estimated_search_cost(tier, output_mode)
+        quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost)
     else:
+        tier = "anonymous"
         quota = check_anon(ip)  # synchronous in-memory
 
     # Debug: log auth resolution so Railway logs show exactly what's happening.
@@ -165,7 +175,7 @@ async def search(request: SearchRequest, http_request: Request):
         synthesis_parts: list[str] = []
 
         try:
-            processed = await asyncio.to_thread(process_query, raw_query)
+            processed = await asyncio.to_thread(process_query, raw_query, tier)
             cleaned_query = processed["cleaned_query"]
             search_angles = processed["search_angles"]
 
@@ -192,7 +202,7 @@ async def search(request: SearchRequest, http_request: Request):
             yield _sse({"type": "papers", "papers": top_papers})
 
             try:
-                async for chunk in synthesize_stream(cleaned_query, level, top_papers, output_mode):
+                async for chunk in synthesize_stream(cleaned_query, level, top_papers, output_mode, tier):
                     synthesis_parts.append(chunk)
                     yield _sse({"type": "text", "text": chunk})
             except SynthesisError as e:

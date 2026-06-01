@@ -6,9 +6,17 @@ from fetcher import fetch_papers
 
 load_dotenv()
 
-# Sonnet, not Haiku: at current (free-tier) volume the quality gain is worth
-# more than the marginal cost. Valid current model ID.
-MODEL = "claude-sonnet-4-5"
+# FORCE_SONNET=true (default) → everyone gets Sonnet during professor validation.
+# Flip to false after first paying user to route free-tier to Haiku.
+FORCE_SONNET = os.getenv("FORCE_SONNET", "true").lower() == "true"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
+MODEL_SONNET = "claude-sonnet-4-5"
+
+
+def _select_model(tier: str) -> str:
+    if FORCE_SONNET:
+        return MODEL_SONNET
+    return MODEL_SONNET if tier in ("pro", "lab") else MODEL_HAIKU
 
 
 class SynthesisError(Exception):
@@ -140,7 +148,7 @@ Output a GFM comparison table with one row per paper. Use exactly these columns:
 
 
 async def synthesize_stream(
-    query: str, level: str, papers: list, output_mode: str = "synthesis"
+    query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free"
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding synthesis text chunks as they arrive from the model.
 
@@ -158,11 +166,12 @@ async def synthesize_stream(
         system, user = _build_prompt(query, level, papers)
         max_tokens = 1500
 
+    model = _select_model(tier)
     client = anthropic.AsyncAnthropic(timeout=30.0)
 
     try:
         async with client.messages.stream(
-            model=MODEL,
+            model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
@@ -179,7 +188,7 @@ async def synthesize_stream(
         yield f"\n\n## Sources\n{sources}"
 
 
-def synthesize(query: str, level: str, papers: list, output_mode: str = "synthesis") -> str:
+def synthesize(query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free") -> str:
     """Blocking synthesis used by the __main__ runner only."""
     if not papers:
         return (
@@ -194,11 +203,12 @@ def synthesize(query: str, level: str, papers: list, output_mode: str = "synthes
         system, user = _build_prompt(query, level, papers)
         max_tokens = 1500
 
+    model = _select_model(tier)
     client = anthropic.Anthropic(timeout=30.0)
 
     try:
         message = client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],

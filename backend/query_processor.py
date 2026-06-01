@@ -1,7 +1,17 @@
 import json
+import os
 import anthropic
 
-MODEL = "claude-haiku-4-5-20251001"
+FORCE_SONNET = os.getenv("FORCE_SONNET", "true").lower() == "true"
+MODEL_HAIKU = "claude-haiku-4-5-20251001"
+MODEL_SONNET = "claude-sonnet-4-5"
+
+
+def _select_model(tier: str) -> str:
+    if FORCE_SONNET:
+        return MODEL_SONNET
+    return MODEL_SONNET if tier in ("pro", "lab") else MODEL_HAIKU
+
 
 _client = anthropic.Anthropic(timeout=15.0)
 
@@ -26,7 +36,7 @@ Respond with ONLY this JSON shape (no other text):
 }}"""
 
 
-def process_query(raw_query: str) -> dict:
+def process_query(raw_query: str, tier: str = "free") -> dict:
     """Return {cleaned_query, search_angles}.
 
     Falls back to the original query on any failure so the pipeline never
@@ -34,7 +44,7 @@ def process_query(raw_query: str) -> dict:
     """
     try:
         msg = _client.messages.create(
-            model=MODEL,
+            model=_select_model(tier),
             max_tokens=256,
             temperature=0.3,
             system=_SYSTEM,
