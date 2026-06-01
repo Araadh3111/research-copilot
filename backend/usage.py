@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import jwt
 
-from supabase_client import sb
+from supabase_client import sb, SUPABASE_BASE_URL
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # the anonymous quota. Using the issuer guarantees we fetch the right project's
 # keys regardless of env drift. Supabase's /auth/v1 routes also sit behind Kong,
 # which 401s without an ``apikey`` header, so we send one.
-_SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+_SUPABASE_URL = SUPABASE_BASE_URL
 _SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
 
 # One cached PyJWKClient per issuer (keys are fetched once then cached).
@@ -154,70 +154,6 @@ def verify_jwt(token: str) -> str | None:
         except Exception as e:
             logger.warning("verify_jwt: get_user fallback failed (%s: %s)", type(e).__name__, e)
     return None
-
-
-def jwt_diagnostics(token: str | None) -> dict:
-    """Self-report why verify_jwt may be failing — surfaced via /auth/debug.
-
-    Lets us diagnose the Railway environment (crypto backend, JWKS reachability,
-    per-stage failures) without access to the server logs. Diagnostic only.
-    """
-    from jwt.algorithms import get_default_algorithms
-
-    diag: dict = {
-        "configured_supabase_url": _SUPABASE_URL or None,
-        "apikey_present": bool(_SUPABASE_KEY),
-        "es256_available": "ES256" in get_default_algorithms(),
-        "sb_client_init": sb is not None,
-    }
-    if not token:
-        diag["stage"] = "no_token"
-        return diag
-
-    try:
-        unverified = jwt.decode(token, options={"verify_signature": False})
-    except Exception as e:
-        diag["stage"] = "undecodable_token"
-        diag["error"] = f"{type(e).__name__}: {e}"
-        return diag
-
-    iss = unverified.get("iss", "")
-    diag["token_iss"] = iss
-    diag["issuer_allowed"] = _issuer_allowed(iss)
-    diag["jwks_url"] = f"{iss}/.well-known/jwks.json" if iss else None
-    if not diag["issuer_allowed"]:
-        diag["stage"] = "untrusted_issuer"
-        return diag
-
-    try:
-        signing_key = _jwks_client_for(iss).get_signing_key_from_jwt(token)
-        diag["jwks_key_found"] = True
-        try:
-            payload = jwt.decode(
-                token, signing_key.key, algorithms=["ES256", "RS256"],
-                audience="authenticated", issuer=iss, options={"verify_exp": True},
-            )
-            diag["stage"] = "jwks_verified"
-            diag["sub"] = payload.get("sub")
-        except Exception as e:
-            diag["stage"] = "jwks_decode_failed"
-            diag["error"] = f"{type(e).__name__}: {e}"
-        return diag
-    except Exception as e:
-        diag["jwks_key_found"] = False
-        diag["jwks_error"] = f"{type(e).__name__}: {e}"
-
-    if sb:
-        try:
-            resp = sb.auth.get_user(token)
-            diag["stage"] = "network_verified" if resp.user else "network_no_user"
-            diag["sub"] = resp.user.id if resp.user else None
-        except Exception as e:
-            diag["stage"] = "network_failed"
-            diag["error"] = f"{type(e).__name__}: {e}"
-    else:
-        diag["stage"] = "no_path_available"
-    return diag
 
 
 def get_tier(user_id: str) -> str:
