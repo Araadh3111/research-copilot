@@ -234,23 +234,14 @@ export function Hero() {
           </div>
         </form>
 
-        {/* Remaining searches badge */}
-        {quota && !quotaError && (
+        {/* Remaining searches badge — only shown for logged-in tiers */}
+        {quota && !quotaError && quota.tier !== "anonymous" && (
           <p className="mt-3 text-xs text-muted-foreground">
-            {quota.tier === "anonymous" ? (
-              <>
-                {quota.remaining_daily} of {quota.limit_daily} free search
-                {quota.limit_daily !== 1 ? "es" : ""} left
-              </>
-            ) : (
-              <>
-                {quota.remaining_daily} of {quota.limit_daily} searches left today
-                {quota.remaining_monthly != null && quota.limit_monthly != null && (
-                  <span className="ml-2 opacity-60">
-                    · {quota.remaining_monthly} / {quota.limit_monthly} this month
-                  </span>
-                )}
-              </>
+            {quota.remaining_daily} of {quota.limit_daily} searches left today
+            {quota.remaining_monthly != null && quota.limit_monthly != null && (
+              <span className="ml-2 opacity-60">
+                · {quota.remaining_monthly} / {quota.limit_monthly} this month
+              </span>
             )}
           </p>
         )}

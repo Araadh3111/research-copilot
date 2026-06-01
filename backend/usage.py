@@ -47,17 +47,17 @@ def check_anon(ip: str) -> dict:
 
 def verify_jwt(token: str) -> str | None:
     """Return user_id if the Supabase JWT is valid, else None."""
+    print(f"DEBUG verify_jwt: sb_is_none={sb is None}", flush=True)
     if not sb:
-        logger.error("verify_jwt: Supabase client is None — SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set")
+        print("DEBUG verify_jwt: sb is None — SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set on Railway", flush=True)
         return None
     try:
         resp = sb.auth.get_user(token)
         user_id = resp.user.id if resp.user else None
-        if not user_id:
-            logger.warning("verify_jwt: get_user returned no user for token")
+        print(f"DEBUG verify_jwt: user_found={user_id is not None} user_id={user_id}", flush=True)
         return user_id
     except Exception as e:
-        logger.error("verify_jwt: exception validating token: %s", e)
+        print(f"DEBUG verify_jwt: exception {type(e).__name__}: {e}", flush=True)
         return None
 
 
