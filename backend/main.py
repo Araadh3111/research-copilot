@@ -36,6 +36,7 @@ app.add_middleware(
 class SearchRequest(BaseModel):
     query: str
     level: str = "intermediate"
+    output_mode: str = "synthesis"
 
 
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10"))
@@ -108,10 +109,12 @@ async def search(request: SearchRequest, http_request: Request):
         )
 
     level = request.level
+    output_mode = request.output_mode if request.output_mode in ("synthesis", "matrix") else "synthesis"
     query_norm = normalize(raw_query)
 
     # ── 2. Cache check (before quota — cache hits are instant and free) ───────
-    cached = await asyncio.to_thread(get_cached, query_norm, level)
+    # Matrix results are not cached — they're lightweight and always fresh.
+    cached = await asyncio.to_thread(get_cached, query_norm, level) if output_mode == "synthesis" else None
     if cached:
         async def stream_from_cache():
             yield _sse({"type": "papers", "papers": cached["papers"]})
@@ -176,18 +179,19 @@ async def search(request: SearchRequest, http_request: Request):
             yield _sse({"type": "papers", "papers": top_papers})
 
             try:
-                async for chunk in synthesize_stream(cleaned_query, level, top_papers):
+                async for chunk in synthesize_stream(cleaned_query, level, top_papers, output_mode):
                     synthesis_parts.append(chunk)
                     yield _sse({"type": "text", "text": chunk})
             except SynthesisError as e:
                 yield _sse({"type": "error", "detail": str(e)})
                 return
 
-            # Store in cache after successful synthesis.
-            full_synthesis = "".join(synthesis_parts)
-            await asyncio.to_thread(
-                store_cache, query_norm, level, full_synthesis, top_papers
-            )
+            # Store in cache after successful synthesis (synthesis mode only).
+            if output_mode == "synthesis":
+                full_synthesis = "".join(synthesis_parts)
+                await asyncio.to_thread(
+                    store_cache, query_norm, level, full_synthesis, top_papers
+                )
 
         except Exception as e:
             yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})

@@ -1,6 +1,6 @@
 "use client"
 
-import { Sparkles, BookOpen, ExternalLink, FileText, Quote } from "lucide-react"
+import { Sparkles, BookOpen, ExternalLink, FileText, Quote, LayoutGrid } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -19,14 +19,16 @@ type Props = {
   papers: Paper[]
   synthesis: string
   streaming: boolean
+  outputMode?: "synthesis" | "matrix"
 }
 
 function numberFmt(n: number): string {
   return new Intl.NumberFormat("en-US").format(n)
 }
 
-export function SearchResults({ query, papers, synthesis, streaming }: Props) {
+export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis" }: Props) {
   const hasSynthesis = synthesis.trim().length > 0
+  const isMatrix = outputMode === "matrix"
 
   return (
     <div className="mt-8 w-full max-w-2xl space-y-4 text-left">
@@ -36,7 +38,7 @@ export function SearchResults({ query, papers, synthesis, streaming }: Props) {
         </p>
       )}
 
-      {/* Synthesis — appears as soon as first text chunk arrives */}
+      {/* Synthesis / Matrix — appears as soon as first text chunk arrives */}
       {(hasSynthesis || streaming) && (
         <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-card/80 p-6 backdrop-blur">
           <div
@@ -46,9 +48,11 @@ export function SearchResults({ query, papers, synthesis, streaming }: Props) {
           />
           <div className="mb-3 flex items-center gap-2">
             <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <Sparkles className="size-4" />
+              {isMatrix ? <LayoutGrid className="size-4" /> : <Sparkles className="size-4" />}
             </span>
-            <h2 className="text-sm font-semibold text-foreground">Synthesis</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              {isMatrix ? "Comparison Matrix" : "Synthesis"}
+            </h2>
             {streaming && (
               <span className="size-1.5 rounded-full bg-primary animate-pulse" />
             )}

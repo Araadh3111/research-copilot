@@ -41,21 +41,17 @@ export function Hero() {
   const [synthesis, setSynthesis] = useState("")
   const [submittedQuery, setSubmittedQuery] = useState("")
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
+  const [outputMode, setOutputMode] = useState<"synthesis" | "matrix">("synthesis")
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!query.trim()) return
-
+  async function runSearch(queryStr: string, levelStr: string, mode: "synthesis" | "matrix") {
     setLoading(true)
     setStreaming(false)
     setError(null)
     setQuotaError(null)
     setPapers([])
     setSynthesis("")
-    setSubmittedQuery(query)
 
     try {
-      // Include JWT so the backend can identify the user and apply their tier limits.
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
 
@@ -65,14 +61,12 @@ export function Hero() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ query, level }),
+        body: JSON.stringify({ query: queryStr, level: levelStr, output_mode: mode }),
       })
 
-      // Rate limit / validation / quota errors come back as plain JSON.
       if (!res.ok) {
         const data = await res.json().catch(() => null)
 
-        // Quota exceeded — store structured error for CTA rendering.
         if (data?.error === "quota_exceeded") {
           setQuotaError({
             tier: data.tier ?? "anonymous",
@@ -152,6 +146,20 @@ export function Hero() {
       setLoading(false)
       setStreaming(false)
     }
+  }
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    if (!query.trim()) return
+    setOutputMode("synthesis")
+    setSubmittedQuery(query)
+    await runSearch(query, level, "synthesis")
+  }
+
+  async function handleModeToggle(mode: "synthesis" | "matrix") {
+    if (mode === outputMode || !submittedQuery || loading) return
+    setOutputMode(mode)
+    await runSearch(submittedQuery, level, mode)
   }
 
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
@@ -295,12 +303,41 @@ export function Hero() {
         )}
 
         {hasResults && (
-          <SearchResults
-            query={submittedQuery}
-            papers={papers}
-            synthesis={synthesis}
-            streaming={streaming}
-          />
+          <>
+            <div className="mt-6 flex w-full max-w-2xl items-center gap-1 rounded-xl border border-border bg-secondary/60 p-1">
+              <button
+                type="button"
+                onClick={() => handleModeToggle("synthesis")}
+                disabled={loading}
+                className={`flex-1 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                  outputMode === "synthesis"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Synthesis
+              </button>
+              <button
+                type="button"
+                onClick={() => handleModeToggle("matrix")}
+                disabled={loading}
+                className={`flex-1 rounded-lg px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                  outputMode === "matrix"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Matrix
+              </button>
+            </div>
+            <SearchResults
+              query={submittedQuery}
+              papers={papers}
+              synthesis={synthesis}
+              streaming={streaming}
+              outputMode={outputMode}
+            />
+          </>
         )}
       </div>
     </section>

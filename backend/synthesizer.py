@@ -106,25 +106,64 @@ Keep bullets concise but specific — 20-35 words. Never sacrifice a concrete fi
     return system, user
 
 
+def _build_matrix_prompt(query: str, papers: list) -> tuple[str, str]:
+    """Return (system_prompt, user_prompt) for the comparison matrix output mode."""
+    abstracts_text = ""
+    for i, paper in enumerate(papers):
+        title = paper.get("title", "No title")
+        abstract = (paper.get("abstract") or "No abstract available")[:1500]
+        citations = paper.get("citationCount", 0)
+        year = paper.get("year", "N/A")
+        abstracts_text += (
+            f"Paper {i+1}: {title} ({year}) - {citations} citations\n"
+            f"Abstract: {abstract}\n\n"
+        )
+
+    system = (
+        "You are a research synthesis engine for Researca OS. "
+        "Output ONLY a GitHub-Flavored Markdown table — no preamble, no commentary, "
+        "no trailing text whatsoever. Keep each cell under 20 words. "
+        "Use '—' for unknown or not-applicable values."
+    )
+
+    user = f"""Research question: "{query}"
+
+Papers:
+{abstracts_text}
+
+Output a GFM comparison table with one row per paper. Use exactly these columns:
+
+| Paper Title | Methodology | Key Findings | Limitations/Gaps |
+|-------------|-------------|--------------|-----------------|"""
+
+    return system, user
+
+
 async def synthesize_stream(
-    query: str, level: str, papers: list
+    query: str, level: str, papers: list, output_mode: str = "synthesis"
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding synthesis text chunks as they arrive from the model.
 
-    Appends the sources block after the stream completes so it appears at the end.
+    Appends the sources block after the stream completes (synthesis mode only).
     Raises SynthesisError on API failure so the caller can emit an SSE error event.
     """
     if not papers:
         yield f'No papers were found for "{query}". Try a broader or differently-worded query.'
         return
 
-    system, user = _build_prompt(query, level, papers)
+    if output_mode == "matrix":
+        system, user = _build_matrix_prompt(query, papers)
+        max_tokens = 800
+    else:
+        system, user = _build_prompt(query, level, papers)
+        max_tokens = 1500
+
     client = anthropic.AsyncAnthropic(timeout=30.0)
 
     try:
         async with client.messages.stream(
             model=MODEL,
-            max_tokens=1500,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         ) as stream:
@@ -135,11 +174,12 @@ async def synthesize_stream(
     except Exception as e:
         raise SynthesisError(f"Synthesis failed: {type(e).__name__}: {e}") from e
 
-    sources = _build_sources(papers)
-    yield f"\n\n## Sources\n{sources}"
+    if output_mode != "matrix":
+        sources = _build_sources(papers)
+        yield f"\n\n## Sources\n{sources}"
 
 
-def synthesize(query: str, level: str, papers: list) -> str:
+def synthesize(query: str, level: str, papers: list, output_mode: str = "synthesis") -> str:
     """Blocking synthesis used by the __main__ runner only."""
     if not papers:
         return (
@@ -147,13 +187,19 @@ def synthesize(query: str, level: str, papers: list) -> str:
             "Try a broader or differently-worded query."
         )
 
-    system, user = _build_prompt(query, level, papers)
+    if output_mode == "matrix":
+        system, user = _build_matrix_prompt(query, papers)
+        max_tokens = 800
+    else:
+        system, user = _build_prompt(query, level, papers)
+        max_tokens = 1500
+
     client = anthropic.Anthropic(timeout=30.0)
 
     try:
         message = client.messages.create(
             model=MODEL,
-            max_tokens=1500,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -163,6 +209,8 @@ def synthesize(query: str, level: str, papers: list) -> str:
         raise SynthesisError(f"Synthesis failed: {type(e).__name__}: {e}") from e
 
     body = message.content[0].text
+    if output_mode == "matrix":
+        return body
     sources = _build_sources(papers)
     return f"{body}\n\n## Sources\n{sources}"
 
