@@ -1,12 +1,13 @@
 "use client"
 
-import { Fragment } from "react"
-import { Target, GitMerge, ShieldCheck, ArrowRight, ChevronDown, Check } from "lucide-react"
+import { Fragment, useState } from "react"
+import { Target, GitMerge, ShieldCheck, ArrowRight, ChevronDown, Check, X } from "lucide-react"
 import { useScrollAnimation } from "@/lib/use-scroll-animation"
 import { useCountUp } from "@/lib/use-count-up"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Magnetic } from "@/components/magnetic"
+import { Loader, LOADERS, GooDefs } from "@/components/loaders"
 
 // ── Hardcoded demo data (static — looks exactly like real Researca output) ────
 const DEMO_ROWS = [
@@ -86,8 +87,65 @@ function WordRise({ words, start }: { words: string[]; start: number }) {
   )
 }
 
+/** The demo's matrix + synthesis snippet — reused inline and in fullscreen. */
+function DemoBody() {
+  return (
+    <div className="p-5 sm:p-7">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-serif text-lg font-semibold text-ink">Comparison Matrix</h3>
+        <span className="font-mono text-[11px] text-stone-light">query: &ldquo;CRISPR gene editing&rdquo;</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
+          <thead>
+            <tr>
+              {["Paper", "Methodology", "Key Finding", "Gap"].map((h) => (
+                <th
+                  key={h}
+                  className="border-b border-line bg-paper px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {DEMO_ROWS.map((row, i) => (
+              <tr key={i} className={`border-b border-line last:border-0 ${i % 2 === 1 ? "bg-paper/50" : ""}`}>
+                <td className="px-4 py-4 align-top">
+                  <span className="font-mono text-[12px] font-medium leading-snug text-ink">{row.title}</span>
+                  <span className="mt-1 block font-mono text-[11px] text-stone-light">{row.year}</span>
+                </td>
+                <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-stone">{row.methodology}</td>
+                <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-body">{row.finding}</td>
+                <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-stone">{row.gap}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Synthesis snippet */}
+      <div className="mt-5 rounded-xl border border-gold/30 bg-gold/[0.06] p-5">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gold">Synthesis</p>
+        <p className="text-[14px] leading-relaxed text-body">
+          Papers 2 and 3 directly contradict on efficiency metrics. No study in this set
+          addresses long-term immune response — this represents a critical gap in the literature.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export function LandingPage() {
   useScrollAnimation()
+
+  // Interactive demo browser-chrome state.
+  const [demoMin, setDemoMin] = useState(false)
+  const [demoFull, setDemoFull] = useState(false)
+  const [wipe, setWipe] = useState(false)
+  const [wipeOrigin, setWipeOrigin] = useState({ x: 0, y: 0 })
 
   return (
     <div className="overflow-x-hidden bg-paper">
@@ -179,11 +237,37 @@ export function LandingPage() {
             data-animate="fade-up"
             className="overflow-hidden rounded-2xl border border-line-strong bg-cream shadow-[0_24px_60px_-24px_rgba(26,23,20,0.25)]"
           >
-            {/* Browser chrome */}
+            {/* Browser chrome — the three dots are interactive */}
             <div className="flex items-center gap-2 border-b border-line bg-paper px-4 py-3">
-              <span className="size-3 rounded-full bg-[#E0584F]" />
-              <span className="size-3 rounded-full bg-[#E6B04A]" />
-              <span className="size-3 rounded-full bg-[#69A85C]" />
+              <div className="group/chrome flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Close demo"
+                  onClick={(e) => {
+                    setWipeOrigin({ x: e.clientX, y: e.clientY })
+                    setWipe(true)
+                  }}
+                  className="flex size-3 items-center justify-center rounded-full bg-[#E0584F] text-[8px] font-bold leading-none text-[#6e1c16] transition hover:brightness-95"
+                >
+                  <span className="opacity-0 transition-opacity group-hover/chrome:opacity-100">×</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={demoMin ? "Restore demo" : "Minimise demo"}
+                  onClick={() => setDemoMin((m) => !m)}
+                  className="flex size-3 items-center justify-center rounded-full bg-[#E6B04A] text-[10px] font-bold leading-none text-[#6e5310] transition hover:brightness-95"
+                >
+                  <span className="opacity-0 transition-opacity group-hover/chrome:opacity-100">−</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Expand demo to fullscreen"
+                  onClick={() => setDemoFull(true)}
+                  className="flex size-3 items-center justify-center rounded-full bg-[#69A85C] text-[7px] font-bold leading-none text-[#1f461a] transition hover:brightness-95"
+                >
+                  <span className="opacity-0 transition-opacity group-hover/chrome:opacity-100">□</span>
+                </button>
+              </div>
               <div className="ml-3 flex-1">
                 <div className="mx-auto w-full max-w-sm rounded-md border border-line bg-cream px-3 py-1 text-center font-mono text-[11px] text-stone">
                   researca.app/search
@@ -191,52 +275,39 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Matrix */}
-            <div className="p-5 sm:p-7">
-              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="font-serif text-lg font-semibold text-ink">Comparison Matrix</h3>
-                <span className="font-mono text-[11px] text-stone-light">query: &ldquo;CRISPR gene editing&rdquo;</span>
-              </div>
-
-              <div className="overflow-x-auto rounded-xl border border-line">
-                <table className="w-full min-w-[640px] border-collapse text-sm">
-                  <thead>
-                    <tr>
-                      {["Paper", "Methodology", "Key Finding", "Gap"].map((h) => (
-                        <th
-                          key={h}
-                          className="border-b border-line bg-paper px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DEMO_ROWS.map((row, i) => (
-                      <tr key={i} className={`border-b border-line last:border-0 ${i % 2 === 1 ? "bg-paper/50" : ""}`}>
-                        <td className="px-4 py-4 align-top">
-                          <span className="font-mono text-[12px] font-medium leading-snug text-ink">{row.title}</span>
-                          <span className="mt-1 block font-mono text-[11px] text-stone-light">{row.year}</span>
-                        </td>
-                        <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-stone">{row.methodology}</td>
-                        <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-body">{row.finding}</td>
-                        <td className="px-4 py-4 align-top text-[13px] leading-relaxed text-stone">{row.gap}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Synthesis snippet */}
-              <div className="mt-5 rounded-xl border border-gold/30 bg-gold/[0.06] p-5">
-                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gold">Synthesis</p>
-                <p className="text-[14px] leading-relaxed text-body">
-                  Papers 2 and 3 directly contradict on efficiency metrics. No study in this set
-                  addresses long-term immune response — this represents a critical gap in the literature.
-                </p>
+            {/* Collapsible body — the yellow dot minimises this (height 0, 400ms) */}
+            <div
+              className={`grid transition-all duration-[400ms] ease-in-out ${
+                demoMin ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <DemoBody />
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* TEMP: loader picker — remove once a winner is chosen ──────────────────── */}
+      <section className="border-y border-dashed border-line-strong bg-paper px-6 py-16">
+        <div className="mx-auto max-w-5xl">
+          <p className="mb-8 text-center text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">
+            Loader picker · temporary
+          </p>
+          <GooDefs />
+          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+            {LOADERS.map((l, i) => (
+              <div
+                key={l.name}
+                className="flex flex-col items-center gap-4 rounded-xl border border-line bg-cream p-6"
+              >
+                <div className="flex h-[130px] items-center justify-center">
+                  <Loader index={i} size={130} />
+                </div>
+                <span className="text-center text-[12px] font-medium text-stone">{l.name}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -374,6 +445,47 @@ export function LandingPage() {
           </p>
         </div>
       </footer>
+
+      {/* Green dot → fullscreen overlay showing the full matrix. */}
+      {demoFull && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[55] overflow-auto bg-paper/95 p-4 backdrop-blur-sm sm:p-8"
+        >
+          <button
+            type="button"
+            aria-label="Close fullscreen"
+            onClick={() => setDemoFull(false)}
+            className="fixed right-5 top-5 z-10 inline-flex size-10 items-center justify-center rounded-full border border-line bg-cream text-stone shadow-sm transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <X className="size-5" />
+          </button>
+          <div className="mx-auto mt-8 w-full max-w-5xl overflow-hidden rounded-2xl border border-line-strong bg-cream shadow-2xl">
+            <DemoBody />
+          </div>
+        </div>
+      )}
+
+      {/* Red dot → fluid ink wipe expanding from the click; click again to reopen. */}
+      <div
+        onClick={() => setWipe(false)}
+        aria-hidden={!wipe}
+        className="fixed inset-0 z-[70] flex items-center justify-center"
+        style={{
+          background: "#1A1714",
+          clipPath: `circle(${wipe ? 150 : 0}% at ${wipeOrigin.x}px ${wipeOrigin.y}px)`,
+          transition: "clip-path 700ms cubic-bezier(0.76, 0, 0.24, 1)",
+          pointerEvents: wipe ? "auto" : "none",
+        }}
+      >
+        <p
+          className="font-serif text-lg text-[#F5F0E8]/80 transition-opacity duration-500"
+          style={{ opacity: wipe ? 1 : 0 }}
+        >
+          Click anywhere to reopen
+        </p>
+      </div>
     </div>
   )
 }

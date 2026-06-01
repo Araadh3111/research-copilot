@@ -233,6 +233,95 @@
   @keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
   .animate-caret { animation: caret-blink 1s step-end infinite; }
 
+  /* ── Organic loaders — black shapes on transparent, 200×200 canvas ────────── */
+  /* 1. Breathing blob */
+  .ldr-breathing-blob {
+    width: 120px; height: 120px; background: #0c0a08;
+    border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
+    animation: blob-morph 4.2s ease-in-out infinite;
+  }
+  @keyframes blob-morph {
+    0%, 100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; transform: rotate(0deg) scale(1); }
+    33% { border-radius: 67% 33% 47% 53% / 37% 62% 38% 63%; transform: rotate(120deg) scale(1.08); }
+    66% { border-radius: 38% 62% 58% 42% / 56% 41% 59% 44%; transform: rotate(240deg) scale(0.94); }
+  }
+
+  /* 2. Liquid fill */
+  .ldr-liquid {
+    position: relative; width: 116px; height: 140px;
+    border: 3px solid #0c0a08; border-radius: 16px; overflow: hidden;
+  }
+  .ldr-liquid-fill {
+    position: absolute; left: -50%; bottom: 0; width: 200%; height: 40%;
+    background: #0c0a08; animation: liquid-rise 3.4s ease-in-out infinite;
+  }
+  .ldr-liquid-fill::before, .ldr-liquid-fill::after {
+    content: ""; position: absolute; top: -14px; left: 0; width: 50%; height: 28px;
+    background: #0c0a08; border-radius: 45%; animation: liquid-wave 1.7s linear infinite;
+  }
+  .ldr-liquid-fill::after { left: 25%; animation-delay: -0.85s; }
+  @keyframes liquid-rise { 0%, 100% { height: 26%; } 50% { height: 80%; } }
+  @keyframes liquid-wave { from { transform: translateX(0) rotate(0deg); } to { transform: translateX(-50%) rotate(360deg); } }
+
+  /* 3. Orbiting blobs (two morphing teardrops) */
+  .ldr-orbit { position: relative; width: 140px; height: 140px; animation: ldr-spin 3s linear infinite; }
+  .ldr-orbit span {
+    position: absolute; top: 50%; left: 50%; width: 46px; height: 46px;
+    background: #0c0a08; border-radius: 0 50% 50% 50%;
+  }
+  .ldr-orbit span:nth-child(1) { transform: translate(-50%, -50%) translateX(-32px) rotate(45deg); animation: teardrop 2s ease-in-out infinite; }
+  .ldr-orbit span:nth-child(2) { transform: translate(-50%, -50%) translateX(32px) rotate(225deg); animation: teardrop 2s ease-in-out infinite reverse; }
+  @keyframes ldr-spin { to { transform: rotate(360deg); } }
+  @keyframes teardrop { 0%, 100% { border-radius: 0 50% 50% 50%; } 50% { border-radius: 50% 50% 50% 0; } }
+
+  /* 4. Pulsing ring (ripple) */
+  .ldr-ring { position: relative; width: 44px; height: 44px; }
+  .ldr-ring::before, .ldr-ring::after {
+    content: ""; position: absolute; inset: 0; border: 3px solid #0c0a08; border-radius: 50%;
+    animation: ripple 1.8s ease-out infinite;
+  }
+  .ldr-ring::after { animation-delay: -0.9s; }
+  @keyframes ripple { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(2.7); opacity: 0; } }
+
+  /* 5. Melting dots (gooey merge/separate) */
+  .ldr-melt { position: relative; width: 180px; height: 48px; filter: url(#ldr-goo); }
+  .ldr-melt span { position: absolute; top: 7px; left: 73px; width: 34px; height: 34px; background: #0c0a08; border-radius: 50%; }
+  .ldr-melt span:nth-child(1) { animation: melt-l 2.2s ease-in-out infinite; }
+  .ldr-melt span:nth-child(3) { animation: melt-r 2.2s ease-in-out infinite; }
+  @keyframes melt-l { 0%, 100% { transform: translateX(-48px); } 50% { transform: translateX(0); } }
+  @keyframes melt-r { 0%, 100% { transform: translateX(48px); } 50% { transform: translateX(0); } }
+
+  /* 6. Worm (a stroke segment travelling a wavy path) */
+  .ldr-worm { width: 200px; height: 200px; }
+  .ldr-worm path {
+    fill: none; stroke: #0c0a08; stroke-width: 14; stroke-linecap: round;
+    stroke-dasharray: 55 260; animation: worm 2.6s linear infinite;
+  }
+  @keyframes worm { from { stroke-dashoffset: 315; } to { stroke-dashoffset: 0; } }
+
+  /* 7. Magnetic field (particles pulled along curves to the centre) */
+  .ldr-magnet { position: relative; width: 200px; height: 200px; }
+  .ldr-magnet span {
+    position: absolute; width: 11px; height: 11px; background: #0c0a08; border-radius: 50%;
+    animation: magnet 2.6s ease-in infinite;
+  }
+  .ldr-magnet span:nth-child(1) { offset-path: path("M12 28 Q70 60 100 100"); animation-delay: 0s; }
+  .ldr-magnet span:nth-child(2) { offset-path: path("M188 24 Q120 70 100 100"); animation-delay: 0.5s; }
+  .ldr-magnet span:nth-child(3) { offset-path: path("M20 180 Q60 120 100 100"); animation-delay: 1s; }
+  .ldr-magnet span:nth-child(4) { offset-path: path("M184 184 Q130 130 100 100"); animation-delay: 1.5s; }
+  .ldr-magnet span:nth-child(5) { offset-path: path("M100 6 Q104 60 100 100"); animation-delay: 2s; }
+  @keyframes magnet { 0% { offset-distance: 0%; opacity: 0; } 12% { opacity: 1; } 82% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+
+  /* 8. Breathing eye (blink + glance) */
+  .ldr-eye {
+    width: 160px; height: 92px; border: 4px solid #0c0a08; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    animation: blink 3s ease-in-out infinite;
+  }
+  .ldr-eye-pupil { width: 46px; height: 46px; background: #0c0a08; border-radius: 50%; animation: glance 3s ease-in-out infinite; }
+  @keyframes blink { 0%, 38%, 100% { transform: scaleY(1); } 44%, 48% { transform: scaleY(0.07); } }
+  @keyframes glance { 0%, 100% { transform: translateX(-20px); } 50% { transform: translateX(20px); } }
+
   @media (prefers-reduced-motion: reduce) {
     [data-animate],
     [data-animate='stagger'] > *,
@@ -247,5 +336,7 @@
     .aurora,
     .animate-float-slow,
     .animate-caret { animation: none !important; }
+    [class^='ldr-'],
+    [class^='ldr-'] * { animation-duration: 3s !important; }
   }
 }

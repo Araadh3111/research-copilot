@@ -4,6 +4,8 @@ import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles } from "l
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
+import { RandomLoader } from "@/components/loaders"
+
 export type Paper = {
   paperId?: string
   title?: string
@@ -103,10 +105,8 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               </div>
             )
           ) : (
-            <div className="flex items-center gap-1 pt-1" aria-label={isMatrix ? "Generating matrix" : "Generating synthesis"}>
-              <span className="size-1.5 animate-bounce rounded-full bg-gold/60 [animation-delay:0ms]" />
-              <span className="size-1.5 animate-bounce rounded-full bg-gold/60 [animation-delay:150ms]" />
-              <span className="size-1.5 animate-bounce rounded-full bg-gold/60 [animation-delay:300ms]" />
+            <div className="flex justify-center py-2" aria-label={isMatrix ? "Generating matrix" : "Generating synthesis"}>
+              <RandomLoader size={96} />
             </div>
           )}
         </div>
