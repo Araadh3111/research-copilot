@@ -313,10 +313,10 @@ export function LandingPage() {
           <p data-animate="fade-in" className="mt-8 text-center text-sm text-stone">
             Students and researchers in developing countries —{" "}
             <a
-              href="mailto:araadh@researca.app"
+              href="mailto:araadh3111@gmail.com"
               className="text-ink underline decoration-gold/40 underline-offset-2 hover:decoration-gold"
             >
-              email araadh@researca.app
+              email araadh3111@gmail.com
             </a>{" "}
             for a discount.
           </p>
@@ -329,7 +329,7 @@ export function LandingPage() {
           <span className="font-serif text-xl font-semibold text-cream">Researca</span>
           <nav className="flex items-center gap-6 text-sm text-stone-light">
             <a href="#" className="transition-colors hover:text-cream">Privacy</a>
-            <a href="mailto:araadh@researca.app" className="transition-colors hover:text-cream">Contact</a>
+            <a href="mailto:araadh3111@gmail.com" className="transition-colors hover:text-cream">Contact</a>
             <a
               href="https://github.com/Araadh3111/research-copilot"
               target="_blank"
