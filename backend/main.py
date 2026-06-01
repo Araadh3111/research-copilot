@@ -14,7 +14,7 @@ from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
 from synthesizer import synthesize_stream, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
-from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST
+from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, jwt_diagnostics
 from synthesizer import FORCE_SONNET
 
 app = FastAPI(title="Researca Core OS Engine API")
@@ -245,11 +245,13 @@ async def auth_debug(http_request: Request):
     jwt_token = _extract_jwt(http_request)
     user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
     tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
+    diag = await asyncio.to_thread(jwt_diagnostics, jwt_token)
     return {
         "jwt_present": jwt_token is not None,
         "authenticated": user_id is not None,
         "user_id": user_id,
         "tier": tier,
+        "diagnostics": diag,
     }
 
 
