@@ -135,10 +135,8 @@ async def search(request: SearchRequest, http_request: Request):
         )
 
     # ── 3. Quota check ────────────────────────────────────────────────────────
-    print(f"DEBUG auth header present: {'authorization' in http_request.headers}", flush=True)
-    jwt = _extract_jwt(http_request)
-    user_id = await asyncio.to_thread(verify_jwt, jwt) if jwt else None
-    print(f"DEBUG user_id extracted: {user_id}", flush=True)
+    jwt_token = _extract_jwt(http_request)
+    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
 
     if user_id:
         tier = await asyncio.to_thread(get_tier, user_id)
@@ -148,12 +146,12 @@ async def search(request: SearchRequest, http_request: Request):
         tier = "anonymous"
         quota = check_anon(ip)  # synchronous in-memory
 
-    # Debug: log auth resolution so Railway logs show exactly what's happening.
-    # jwt_present=no  → frontend not sending Authorization header
-    # user_id=None    → verify_jwt failed (bad/missing SUPABASE_SERVICE_ROLE_KEY)
-    # tier=anonymous  → logged-in user falling through to anon quota
+    # One clean line per request so Railway logs show the resolved identity.
+    #   jwt=no          → frontend not sending the Authorization header
+    #   user_id=None    → verify_jwt failed (token invalid / JWKS unreachable)
+    #   tier=anonymous  → a logged-in user is falling through to the anon quota
     print(
-        f"[search] ip={ip} jwt={'yes' if jwt else 'no'} "
+        f"[search] ip={ip} jwt={'yes' if jwt_token else 'no'} "
         f"user_id={user_id!r} tier={quota.get('tier')!r} "
         f"allowed={quota['allowed']}",
         flush=True,
@@ -234,6 +232,25 @@ async def search(request: SearchRequest, http_request: Request):
     return StreamingResponse(
         generate(), media_type="text/event-stream", headers=_SSE_HEADERS
     )
+
+
+@app.get("/auth/debug")
+async def auth_debug(http_request: Request):
+    """Resolve the caller's identity from their bearer token — no search, no cost.
+
+    Lets us confirm the JWT fix on Railway directly: a logged-in caller should see
+    ``authenticated: true`` with their real tier instead of falling through to
+    anonymous. Only ever reveals the caller's own identity.
+    """
+    jwt_token = _extract_jwt(http_request)
+    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+    tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
+    return {
+        "jwt_present": jwt_token is not None,
+        "authenticated": user_id is not None,
+        "user_id": user_id,
+        "tier": tier,
+    }
 
 
 @app.get("/")

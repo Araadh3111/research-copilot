@@ -1,10 +1,26 @@
 import logging
+import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta, time as dt_time, timezone
+
+import jwt
 
 from supabase_client import sb
 
 logger = logging.getLogger(__name__)
+
+# ── JWT verification via Supabase's public JWKS (asymmetric ES256/RS256) ──────
+# Supabase signs access tokens with rotating asymmetric keys exposed at the
+# project's public JWKS endpoint. Verifying locally (a) needs no service-role
+# key, (b) is independent of the installed supabase-py version, and (c) avoids a
+# network round-trip to /auth/v1/user on every search. PyJWKClient caches the
+# fetched keys, so only the first verification hits the network.
+_SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+_jwks_client: jwt.PyJWKClient | None = (
+    jwt.PyJWKClient(f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    if _SUPABASE_URL
+    else None
+)
 
 # ── Tier limits — tune these constants, never hardcode elsewhere ─────────────
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
@@ -58,19 +74,51 @@ def check_anon(ip: str) -> dict:
 # ── Authenticated usage ───────────────────────────────────────────────────────
 
 def verify_jwt(token: str) -> str | None:
-    """Return user_id if the Supabase JWT is valid, else None."""
-    print(f"DEBUG verify_jwt: sb_is_none={sb is None}", flush=True)
-    if not sb:
-        print("DEBUG verify_jwt: sb is None — SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set on Railway", flush=True)
+    """Return the user_id (JWT ``sub``) for a valid Supabase access token, else None.
+
+    Primary path: verify the signature locally against the project's public JWKS
+    (ES256/RS256). This is the path that fixes the production bug where logged-in
+    users were silently downgraded to the anonymous quota — the old code depended
+    on a network ``get_user`` call that failed when the service-role key / library
+    version on Railway couldn't validate the new asymmetric tokens.
+
+    Fallback: if no JWKS signing key matches (e.g. a legacy HS256-signed token, or
+    the JWKS endpoint is unreachable), fall back to the GoTrue network call.
+    """
+    if not token:
         return None
-    try:
-        resp = sb.auth.get_user(token)
-        user_id = resp.user.id if resp.user else None
-        print(f"DEBUG verify_jwt: user_found={user_id is not None} user_id={user_id}", flush=True)
-        return user_id
-    except Exception as e:
-        print(f"DEBUG verify_jwt: exception {type(e).__name__}: {e}", flush=True)
-        return None
+
+    if _jwks_client is not None:
+        signing_key = None
+        try:
+            signing_key = _jwks_client.get_signing_key_from_jwt(token)
+        except Exception as e:
+            # kid not in JWKS / endpoint unreachable → try the network fallback.
+            logger.warning("verify_jwt: no JWKS key (%s: %s); trying network", type(e).__name__, e)
+
+        if signing_key is not None:
+            try:
+                payload = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["ES256", "RS256"],
+                    audience="authenticated",
+                    options={"verify_exp": True},
+                )
+                return payload.get("sub")
+            except jwt.PyJWTError as e:
+                # Signed token but invalid/expired/wrong-audience → definitive reject.
+                logger.info("verify_jwt: rejected token (%s)", type(e).__name__)
+                return None
+
+    # Fallback: GoTrue network validation (legacy tokens or JWKS unavailable).
+    if sb:
+        try:
+            resp = sb.auth.get_user(token)
+            return resp.user.id if resp.user else None
+        except Exception as e:
+            logger.warning("verify_jwt: get_user fallback failed (%s: %s)", type(e).__name__, e)
+    return None
 
 
 def get_tier(user_id: str) -> str:
@@ -97,7 +145,6 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
     Upserts the daily row (count + cost) on success.
     Fails open on any Supabase error so users are never blocked by infra issues.
     """
-    print(f"DEBUG user_id={user_id} ip=N/A tier={tier}", flush=True)
     limits = LIMITS.get(tier, LIMITS["free"])
 
     if not sb:
