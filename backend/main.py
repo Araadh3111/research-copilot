@@ -136,6 +136,17 @@ async def search(request: SearchRequest, http_request: Request):
     else:
         quota = check_anon(ip)  # synchronous in-memory
 
+    # Debug: log auth resolution so Railway logs show exactly what's happening.
+    # jwt_present=no  → frontend not sending Authorization header
+    # user_id=None    → verify_jwt failed (bad/missing SUPABASE_SERVICE_ROLE_KEY)
+    # tier=anonymous  → logged-in user falling through to anon quota
+    print(
+        f"[search] ip={ip} jwt={'yes' if jwt else 'no'} "
+        f"user_id={user_id!r} tier={quota.get('tier')!r} "
+        f"allowed={quota['allowed']}",
+        flush=True,
+    )
+
     if not quota["allowed"]:
         return JSONResponse(
             status_code=429,

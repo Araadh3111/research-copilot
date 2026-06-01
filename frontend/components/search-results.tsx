@@ -40,47 +40,87 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
 
       {/* Synthesis / Matrix — appears as soon as first text chunk arrives */}
       {(hasSynthesis || streaming) && (
-        <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-card/80 p-6 backdrop-blur">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full opacity-40 blur-3xl"
-            style={{ background: "radial-gradient(circle, rgba(124,111,255,0.5) 0%, rgba(6,6,15,0) 70%)" }}
-          />
-          <div className="mb-3 flex items-center gap-2">
-            <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
+        <div className={`relative overflow-hidden rounded-2xl border p-6 ${
+          isMatrix
+            ? "border-gray-200 bg-white shadow-sm"
+            : "border-primary/30 bg-card/80 backdrop-blur"
+        }`}>
+          {!isMatrix && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full opacity-40 blur-3xl"
+              style={{ background: "radial-gradient(circle, rgba(124,111,255,0.5) 0%, rgba(6,6,15,0) 70%)" }}
+            />
+          )}
+          <div className="mb-4 flex items-center gap-2">
+            <span className={`inline-flex size-7 items-center justify-center rounded-lg ${
+              isMatrix ? "bg-gray-100 text-gray-500" : "bg-primary/15 text-primary"
+            }`}>
               {isMatrix ? <LayoutGrid className="size-4" /> : <Sparkles className="size-4" />}
             </span>
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className={`text-sm font-semibold ${isMatrix ? "text-gray-800" : "text-foreground"}`}>
               {isMatrix ? "Comparison Matrix" : "Synthesis"}
             </h2>
             {streaming && (
-              <span className="size-1.5 rounded-full bg-primary animate-pulse" />
+              <span className={`size-1.5 rounded-full animate-pulse ${isMatrix ? "bg-gray-400" : "bg-primary"}`} />
             )}
           </div>
 
           {hasSynthesis ? (
-            <div
-              className="prose prose-sm prose-invert max-w-none text-pretty
-                prose-headings:text-foreground prose-headings:font-semibold
-                prose-p:text-foreground/90 prose-li:text-foreground/90
-                prose-strong:text-foreground prose-a:text-primary
-                prose-a:font-medium hover:prose-a:text-primary/80"
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-                }}
+            isMatrix ? (
+              <div className="overflow-x-auto rounded-lg border border-gray-100">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <table className="w-full table-fixed border-collapse text-sm">{children}</table>
+                    ),
+                    thead: ({ children }) => <thead>{children}</thead>,
+                    tbody: ({ children }) => <tbody>{children}</tbody>,
+                    th: ({ children }) => (
+                      <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 border-b-2 border-gray-200 first:w-2/5">
+                        {children}
+                      </th>
+                    ),
+                    tr: ({ children }) => (
+                      <tr className="border-b border-gray-100 last:border-0 even:bg-gray-50/70">
+                        {children}
+                      </tr>
+                    ),
+                    td: ({ children }) => (
+                      <td className="px-4 py-3.5 align-top text-[13px] leading-relaxed text-gray-700 first:font-semibold first:text-gray-900">
+                        {children}
+                      </td>
+                    ),
+                    a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                  }}
+                >
+                  {synthesis}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <div
+                className="prose prose-sm prose-invert max-w-none text-pretty
+                  prose-headings:text-foreground prose-headings:font-semibold
+                  prose-p:text-foreground/90 prose-li:text-foreground/90
+                  prose-strong:text-foreground prose-a:text-primary
+                  prose-a:font-medium hover:prose-a:text-primary/80"
               >
-                {synthesis}
-              </ReactMarkdown>
-            </div>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                  }}
+                >
+                  {synthesis}
+                </ReactMarkdown>
+              </div>
+            )
           ) : (
-            /* Waiting for first chunk — three bouncing dots */
-            <div className="flex items-center gap-1 pt-1" aria-label="Generating synthesis">
-              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:0ms]" />
-              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:150ms]" />
-              <span className="size-1.5 rounded-full bg-primary/60 animate-bounce [animation-delay:300ms]" />
+            <div className="flex items-center gap-1 pt-1" aria-label={isMatrix ? "Generating matrix" : "Generating synthesis"}>
+              <span className={`size-1.5 rounded-full animate-bounce [animation-delay:0ms] ${isMatrix ? "bg-gray-400/60" : "bg-primary/60"}`} />
+              <span className={`size-1.5 rounded-full animate-bounce [animation-delay:150ms] ${isMatrix ? "bg-gray-400/60" : "bg-primary/60"}`} />
+              <span className={`size-1.5 rounded-full animate-bounce [animation-delay:300ms] ${isMatrix ? "bg-gray-400/60" : "bg-primary/60"}`} />
             </div>
           )}
         </div>
