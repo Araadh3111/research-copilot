@@ -137,13 +137,22 @@ async def search(request: SearchRequest, http_request: Request):
     # ── 3. Quota check ────────────────────────────────────────────────────────
     jwt_token = _extract_jwt(http_request)
     user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+    tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
+
+    # Comparison Matrix is a Pro feature — gate before consuming any quota.
+    if output_mode == "matrix" and tier not in ("pro", "lab"):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "matrix_gated",
+                "message": "Comparison Matrix is a Pro feature. Upgrade to unlock it.",
+            },
+        )
 
     if user_id:
-        tier = await asyncio.to_thread(get_tier, user_id)
         estimated_cost = _estimated_search_cost(tier, output_mode)
         quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost)
     else:
-        tier = "anonymous"
         quota = check_anon(ip)  # synchronous in-memory
 
     # One clean line per request so Railway logs show the resolved identity.

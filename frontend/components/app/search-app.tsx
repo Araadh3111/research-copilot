@@ -1,13 +1,13 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Search, ChevronDown, Loader2, ArrowRight, Lock } from "lucide-react"
+import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X } from "lucide-react"
 
 import { SearchResults, type Paper } from "@/components/search-results"
-import { SEARCH_URL } from "@/lib/api"
+import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
 import { createClient } from "@/utils/supabase/client"
 
 const levels = [
@@ -31,7 +31,7 @@ type QuotaError = {
   resets_at: string | null
 }
 
-export function SearchApp({ userEmail }: { userEmail?: string }) {
+export function SearchApp({ userEmail, initialTier }: { userEmail?: string; initialTier?: string }) {
   const router = useRouter()
   const supabase = createClient()
 
@@ -46,6 +46,34 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
   const [submittedQuery, setSubmittedQuery] = useState("")
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
   const [outputMode, setOutputMode] = useState<"synthesis" | "matrix">("synthesis")
+  const [tier, setTier] = useState<string>(initialTier ?? "free")
+  const [showUpgrade, setShowUpgrade] = useState(false)
+
+  const isPro = tier === "pro" || tier === "lab"
+
+  // Confirm the tier from the backend (service-role read — authoritative) so the
+  // Matrix gate reflects reality even if the server-side profile read was blocked.
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token
+        if (!token) return
+        const res = await fetch(`${API_BASE_URL}/auth/debug`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (active && typeof data?.tier === "string") setTier(data.tier)
+      } catch {
+        /* keep initialTier on failure */
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [supabase])
 
   // ── API logic ported verbatim — do not change request/stream handling ──────
   async function runSearch(queryStr: string, levelStr: string, mode: "synthesis" | "matrix") {
@@ -71,6 +99,13 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null)
+
+        if (data?.error === "matrix_gated") {
+          setTier((t) => (t === "pro" || t === "lab" ? "free" : t))
+          setOutputMode("synthesis")
+          setShowUpgrade(true)
+          return
+        }
 
         if (data?.error === "quota_exceeded") {
           setQuotaError({
@@ -128,6 +163,7 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
               remaining_monthly: event.remaining_monthly as number | null,
               limit_monthly: event.limit_monthly as number | null,
             })
+            if (typeof event.tier === "string") setTier(event.tier)
           } else if (event.type === "done") {
             setStreaming(false)
             setLoading(false)
@@ -162,6 +198,11 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
   }
 
   async function handleModeToggle(mode: "synthesis" | "matrix") {
+    // Matrix is Pro-only — show the upgrade prompt instead of calling the API.
+    if (mode === "matrix" && !isPro) {
+      setShowUpgrade(true)
+      return
+    }
     if (mode === outputMode || !submittedQuery || loading) return
     setOutputMode(mode)
     await runSearch(submittedQuery, level, mode)
@@ -309,16 +350,29 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
             >
               Synthesis
             </button>
-            <button
-              type="button"
-              onClick={() => handleModeToggle("matrix")}
-              disabled={loading}
-              className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
-                outputMode === "matrix" ? "bg-ink text-cream" : "text-stone hover:text-ink"
-              }`}
-            >
-              Matrix
-            </button>
+            <div className="group relative">
+              <button
+                type="button"
+                onClick={() => handleModeToggle("matrix")}
+                disabled={loading}
+                aria-disabled={!isPro}
+                className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                  !isPro
+                    ? "text-stone-light"
+                    : outputMode === "matrix"
+                      ? "bg-ink text-cream"
+                      : "text-stone hover:text-ink"
+                }`}
+              >
+                Matrix
+                {!isPro && <Lock className="size-3" />}
+              </button>
+              {!isPro && (
+                <span className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-cream opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100">
+                  Pro feature — upgrade to unlock
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -334,6 +388,54 @@ export function SearchApp({ userEmail }: { userEmail?: string }) {
 
         <div className="h-24" />
       </section>
+
+      {/* Upgrade modal — shown when a non-Pro user reaches for Matrix */}
+      {showUpgrade && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+          onClick={() => setShowUpgrade(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-sm rounded-2xl border border-line bg-cream p-7 text-center shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setShowUpgrade(false)}
+              className="absolute right-4 top-4 text-stone-light transition-colors hover:text-ink"
+            >
+              <X className="size-4" />
+            </button>
+            <span className="mx-auto inline-flex size-11 items-center justify-center rounded-xl bg-gold/15 text-gold">
+              <Zap className="size-5" />
+            </span>
+            <h3 className="mt-4 font-serif text-xl font-semibold text-ink">
+              Comparison Matrix is a Pro feature
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-stone">
+              Upgrade to Pro to compare papers side-by-side by methodology, findings, and gaps —
+              plus 200 searches/month and CSV + BibTeX export.
+            </p>
+            <a
+              href="mailto:araadh3111@gmail.com?subject=Researca%20Pro"
+              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft"
+            >
+              <Zap className="size-4" />
+              Upgrade to Pro
+            </a>
+            <button
+              type="button"
+              onClick={() => setShowUpgrade(false)}
+              className="mt-2 w-full rounded-full px-5 py-2 text-sm text-stone transition-colors hover:text-ink"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -13,7 +13,16 @@ export default async function Page() {
   } = await supabase.auth.getUser()
 
   if (user) {
-    return <SearchApp userEmail={user.email ?? undefined} />
+    // Best-effort tier for the initial render; SearchApp re-confirms via the
+    // backend (service-role) so the Matrix gate is correct even if RLS blocks this.
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("tier")
+      .eq("id", user.id)
+      .maybeSingle()
+    return (
+      <SearchApp userEmail={user.email ?? undefined} initialTier={profile?.tier ?? "free"} />
+    )
   }
   return <LandingPage />
 }

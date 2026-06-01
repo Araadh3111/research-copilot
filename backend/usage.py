@@ -54,7 +54,7 @@ def _jwks_client_for(issuer: str) -> jwt.PyJWKClient | None:
 LIMITS: dict[str, dict] = {
     "anonymous": {"daily": 2,  "monthly": None, "cost_monthly": None},
     "free":      {"daily": 10, "monthly": 20,   "cost_monthly": 0.50},
-    "pro":       {"daily": 30, "monthly": 150,  "cost_monthly": 8.00},
+    "pro":       {"daily": 30, "monthly": 200,  "cost_monthly": 8.00},
     "lab":       {"daily": 60, "monthly": 300,  "cost_monthly": 20.00},
 }
 
