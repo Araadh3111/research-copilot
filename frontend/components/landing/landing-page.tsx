@@ -291,7 +291,7 @@ export function LandingPage() {
                 <span className="text-2xl font-semibold text-ink">$0</span> / month
               </p>
               <ul className="mt-7 space-y-3">
-                {["10 searches / month", "Synthesis mode", "Comparison matrix"].map((f) => (
+                {["10 searches / month", "Synthesis mode"].map((f) => (
                   <li key={f} className="flex items-center gap-2.5 text-[15px] text-body">
                     <Check className="size-4 shrink-0 text-gold" strokeWidth={2.5} />
                     {f}
@@ -319,7 +319,8 @@ export function LandingPage() {
               </p>
               <ul className="mt-7 space-y-3">
                 {[
-                  "30 searches / day",
+                  "200 searches / month",
+                  "Comparison matrix",
                   "Everything in Free",
                   "Priority synthesis (Sonnet model)",
                   "CSV + BibTeX export",

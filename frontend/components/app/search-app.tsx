@@ -216,7 +216,6 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   }
 
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
-  const isUnlimited = quota?.tier === "pro" || quota?.tier === "lab"
 
   return (
     <div className="min-h-screen bg-paper">
@@ -301,11 +300,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         {/* Quota line */}
         {!quotaError && (
           <p className="mt-3 text-xs text-stone-light">
-            {isUnlimited
-              ? "Unlimited searches on Pro"
-              : quota
-                ? `${quota.remaining_monthly ?? quota.remaining_daily} searches remaining this month`
-                : "Free · 10 searches / month"}
+            {quota
+              ? `${quota.remaining_monthly ?? quota.remaining_daily} searches remaining this month`
+              : "Free · 10 searches / month"}
           </p>
         )}
 

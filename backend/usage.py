@@ -51,11 +51,12 @@ def _jwks_client_for(issuer: str) -> jwt.PyJWKClient | None:
 # ── Tier limits — tune these constants, never hardcode elsewhere ─────────────
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
 # cost_monthly = hard USD ceiling per calendar month (None = no cost cap).
+# daily = None means no daily cap (only the monthly limit binds).
 LIMITS: dict[str, dict] = {
-    "anonymous": {"daily": 2,  "monthly": None, "cost_monthly": None},
-    "free":      {"daily": 10, "monthly": 20,   "cost_monthly": 0.50},
-    "pro":       {"daily": 30, "monthly": 200,  "cost_monthly": 8.00},
-    "lab":       {"daily": 60, "monthly": 300,  "cost_monthly": 20.00},
+    "anonymous": {"daily": 2,    "monthly": None, "cost_monthly": None},
+    "free":      {"daily": 10,   "monthly": 20,   "cost_monthly": 0.50},
+    "pro":       {"daily": None, "monthly": 200,  "cost_monthly": 8.00},
+    "lab":       {"daily": None, "monthly": 300,  "cost_monthly": 20.00},
 }
 
 # ── Per-search cost estimates (USD) ──────────────────────────────────────────
@@ -199,7 +200,7 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
         daily_count: int = row.data[0]["daily_count"] if row.data else 0
         today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if row.data else 0.0
 
-        if daily_count >= limits["daily"]:
+        if limits["daily"] is not None and daily_count >= limits["daily"]:
             tomorrow = today + timedelta(days=1)
             resets = datetime.combine(tomorrow, dt_time.min, timezone.utc).isoformat()
             return {"allowed": False, "limit_type": "daily", "tier": tier, "resets_at": resets}
@@ -252,10 +253,13 @@ def _allow(tier: str, limits: dict, used_daily: int, used_monthly: int) -> dict:
     remaining_monthly = (
         limits["monthly"] - used_monthly if limits["monthly"] else None
     )
+    remaining_daily = (
+        limits["daily"] - used_daily if limits["daily"] is not None else None
+    )
     return {
         "allowed": True,
         "tier": tier,
-        "remaining_daily": limits["daily"] - used_daily,
+        "remaining_daily": remaining_daily,
         "limit_daily": limits["daily"],
         "remaining_monthly": remaining_monthly,
         "limit_monthly": limits["monthly"],
