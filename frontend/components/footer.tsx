@@ -3,7 +3,7 @@ export function Footer() {
     <footer className="border-t border-[#E5E4E2] px-6 py-8">
       <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-3 sm:flex-row">
         <p className="text-sm text-[#78716C]">
-          Built by Upinder Singh, age 15 · Chandigarh, India · Researca © 2025
+          Built by Araadh Singh, age 15 · Chandigarh, India · Researca © 2025
         </p>
         <div className="flex gap-5">
           <a href="#" className="text-sm text-[#78716C] transition-colors hover:text-[#1C1917]">
