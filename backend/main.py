@@ -14,7 +14,7 @@ from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
 from synthesizer import synthesize_stream, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
-from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST
+from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, record_search
 from synthesizer import FORCE_SONNET
 
 app = FastAPI(title="Researca Core OS Engine API")
@@ -120,6 +120,11 @@ async def search(request: SearchRequest, http_request: Request):
     output_mode = request.output_mode if request.output_mode in ("synthesis", "matrix") else "synthesis"
     query_norm = normalize(raw_query)
 
+    # Resolve the caller's identity up front so both cache hits and full
+    # searches can be appended to their search history.
+    jwt_token = _extract_jwt(http_request)
+    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+
     # ── 2. Cache check (before quota — cache hits are instant and free) ───────
     # Matrix results are not cached — they're lightweight and always fresh.
     cached = await asyncio.to_thread(get_cached, query_norm, level) if output_mode == "synthesis" else None
@@ -129,14 +134,14 @@ async def search(request: SearchRequest, http_request: Request):
             for chunk in stream_chunks(cached["synthesis"]):
                 yield _sse({"type": "text", "text": chunk})
             yield _sse({"type": "done"})
+            if user_id:
+                await asyncio.to_thread(record_search, user_id, raw_query, output_mode)
 
         return StreamingResponse(
             stream_from_cache(), media_type="text/event-stream", headers=_SSE_HEADERS
         )
 
     # ── 3. Quota check ────────────────────────────────────────────────────────
-    jwt_token = _extract_jwt(http_request)
-    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
     tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
 
     # Comparison Matrix is a Pro feature — gate before consuming any quota.
@@ -222,6 +227,10 @@ async def search(request: SearchRequest, http_request: Request):
                 await asyncio.to_thread(
                     store_cache, query_norm, level, full_synthesis, top_papers
                 )
+
+            # Append to the user's search history (best-effort, never blocks).
+            if user_id:
+                await asyncio.to_thread(record_search, user_id, raw_query, output_mode)
 
         except Exception as e:
             yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})

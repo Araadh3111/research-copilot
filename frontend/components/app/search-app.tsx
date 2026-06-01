@@ -7,6 +7,7 @@ import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X } from "lucide-r
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearchLoader } from "@/components/research-loader"
+import { SearchHistorySidebar } from "@/components/app/search-history-sidebar"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
@@ -50,6 +51,8 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [outputMode, setOutputMode] = useState<"synthesis" | "matrix">("synthesis")
   const [tier, setTier] = useState<string>(initialTier ?? "free")
   const [showUpgrade, setShowUpgrade] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [historyRefresh, setHistoryRefresh] = useState(0)
 
   const isPro = tier === "pro" || tier === "lab"
 
@@ -169,6 +172,8 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           } else if (event.type === "done") {
             setStreaming(false)
             setLoading(false)
+            // A new row was just written server-side — refresh the sidebar.
+            setHistoryRefresh((n) => n + 1)
             break outer
           } else if (event.type === "error") {
             setError((event.detail as string) ?? "An error occurred.")
@@ -218,7 +223,18 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="flex min-h-screen bg-paper">
+      <SearchHistorySidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((o) => !o)}
+        onSelect={(q) => {
+          setQuery(q)
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        }}
+        refreshKey={historyRefresh}
+      />
+
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
       {/* App navbar */}
       <header className="sticky top-0 z-50 border-b border-line bg-paper/80 backdrop-blur-sm">
         <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
@@ -391,6 +407,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
 
         <div className="h-24" />
       </section>
+      </div>
 
       {/* Upgrade modal — shown when a non-Pro user reaches for Matrix */}
       {showUpgrade && (

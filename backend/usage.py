@@ -157,6 +157,23 @@ def verify_jwt(token: str) -> str | None:
     return None
 
 
+def record_search(user_id: str, query: str, output_mode: str) -> None:
+    """Append one row to search_history for a logged-in user (best-effort).
+
+    Inserts with the service-role client (bypasses RLS); reads happen on the
+    frontend under the user's JWT, where RLS restricts rows to their own. Never
+    raises — a history write must never break or slow the search response.
+    """
+    if not sb or not user_id:
+        return
+    try:
+        sb.table("search_history").insert(
+            {"user_id": user_id, "query": query, "output_mode": output_mode}
+        ).execute()
+    except Exception as e:
+        logger.warning("record_search failed (%s: %s)", type(e).__name__, e)
+
+
 def get_tier(user_id: str) -> str:
     """Return the user's tier from user_profiles; defaults to 'free'."""
     if not sb:
