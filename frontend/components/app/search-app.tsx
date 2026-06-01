@@ -3,8 +3,10 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X } from "lucide-react"
+import { Logo } from "@/components/logo"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { ResearchLoader } from "@/components/research-loader"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
@@ -222,11 +224,12 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
       <header className="sticky top-0 z-50 border-b border-line bg-paper/80 backdrop-blur-sm">
         <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <a href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="Researca" width={28} height={28} />
+            <Logo size={30} />
             <span className="font-serif text-xl font-semibold tracking-tight text-ink">Researca</span>
           </a>
           <div className="flex items-center gap-4">
             {userEmail && <span className="hidden text-sm text-stone-light sm:block">{userEmail}</span>}
+            <ThemeToggle />
             <button
               onClick={handleLogout}
               className="text-sm text-stone transition-colors hover:text-ink"
@@ -261,7 +264,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
                 aria-label="Expertise level"
-                className="h-9 cursor-pointer appearance-none rounded-full border border-line bg-parchment pl-3 pr-8 text-sm text-ink outline-none transition-colors hover:bg-[#E4DFD3]"
+                className="h-9 cursor-pointer appearance-none rounded-full border border-line bg-parchment pl-3 pr-8 text-sm text-ink outline-none transition-colors hover:bg-line"
               >
                 {levels.map((l) => (
                   <option key={l.value} value={l.value}>{l.label}</option>
@@ -313,7 +316,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         </p>
 
         {error && (
-          <p className="mt-4 max-w-2xl text-sm text-[#DC2626]" role="alert">{error}</p>
+          <p className="mt-4 max-w-2xl text-sm text-destructive" role="alert">{error}</p>
         )}
 
         {/* Quota-exceeded wall */}
@@ -376,6 +379,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </div>
         )}
 
+        {/* Cinematic staged loader — only in the gap before results stream in. */}
+        {loading && !hasResults && <ResearchLoader />}
+
         {hasResults && (
           <SearchResults
             query={submittedQuery}
@@ -392,7 +398,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
       {/* Upgrade modal — shown when a non-Pro user reaches for Matrix */}
       {showUpgrade && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1714]/40 p-4 backdrop-blur-sm dark:bg-black/60"
           onClick={() => setShowUpgrade(false)}
         >
           <div

@@ -87,7 +87,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               <div
                 className="prose prose-sm max-w-none text-pretty leading-[1.7]
                   prose-headings:font-serif prose-headings:text-ink prose-headings:font-semibold
-                  prose-p:text-[#3D3530] prose-li:text-[#3D3530]
+                  prose-p:text-body prose-li:text-body
                   prose-strong:text-ink prose-a:text-ink prose-a:font-medium
                   prose-a:underline prose-a:decoration-gold/40 prose-a:underline-offset-2 hover:prose-a:decoration-gold
                   prose-hr:border-line"
@@ -142,7 +142,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                   {authors && <p className="mt-1.5 truncate text-xs text-stone">{authors}</p>}
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone">
                     {typeof paper.year === "number" && (
-                      <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-[#3D3530]">
+                      <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-body">
                         {paper.year}
                       </span>
                     )}

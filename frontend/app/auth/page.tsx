@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
-import Image from "next/image"
-
 import { createClient } from "@/utils/supabase/client"
+import { Logo } from "@/components/logo"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -125,11 +125,14 @@ export default function AuthPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-paper px-6 text-ink">
+    <main className="relative flex min-h-screen flex-col items-center justify-center bg-paper px-6 text-ink">
+      <div className="absolute right-5 top-5">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-[400px] rounded-2xl border-line bg-cream shadow-sm">
         <CardHeader className="text-center">
           <a href="/" className="mx-auto mb-2 flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="Researca logo" width={28} height={28} />
+            <Logo size={30} />
             <span className="font-serif text-lg font-semibold tracking-tight">Researca</span>
           </a>
           {loadingUser ? (

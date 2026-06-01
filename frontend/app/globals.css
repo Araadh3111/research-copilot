@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 @plugin "@tailwindcss/typography";
 
+/* Class-based dark mode (toggled by adding `.dark` to <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Design tokens ──────────────────────────────────────────────────────────
    Warm parchment palette. One black accent. Gold used sparingly.
    Editorial / academic-premium — Wonders AI meets Linear. */
@@ -10,6 +13,7 @@
   --bg-secondary: #EDE8DC;   /* slightly darker beige for cards */
   --bg-white: #FDFCF9;       /* near-white surface */
   --text-primary: #1A1714;   /* warm near-black */
+  --text-body: #3D3530;      /* warm dark — long-form body copy */
   --text-secondary: #6B6560; /* warm grey */
   --text-muted: #9E9890;     /* lighter warm grey */
   --accent: #1A1714;         /* black — main CTAs */
@@ -41,6 +45,29 @@
   --radius: 0.625rem;
 }
 
+/* ── Dark mode — same layout, deep warm canvas, GOLDEN text ─────────────────
+   The semantic tokens are aliased so that `ink` = primary text. Flipping
+   --text-primary to gold therefore (a) turns body/heading text gold and
+   (b) turns the solid `bg-ink` CTAs into gold buttons with dark labels
+   (text-cream = --bg-white = a dark surface here). One override block, whole
+   UI re-skinned, zero markup changes. */
+.dark {
+  --bg-primary: #14100B;      /* deep warm near-black canvas */
+  --bg-secondary: #1C1813;    /* card / section surface */
+  --bg-white: #221C14;        /* raised surface (also CTA label colour) */
+  --text-primary: #E8C572;    /* GOLDEN primary text + solid-button fill */
+  --text-body: #DCC183;       /* warm gold for long-form body copy */
+  --text-secondary: #C0A86E;  /* muted gold for body copy */
+  --text-muted: #8C7C58;      /* dim gold-grey for captions */
+  --accent: #E8C572;          /* gold */
+  --accent-hover: #F2D685;    /* brighter gold on hover */
+  --border-soft: #322A1E;     /* warm dark hairline */
+  --border-strong: #4A3F2C;   /* stronger warm border */
+  --highlight: #F2C95B;       /* vivid gold accent (badges, gaps) */
+  --destructive: #F08A7A;
+  color-scheme: dark;
+}
+
 @theme inline {
   /* Fonts (next/font injects the --font-* variables in layout.tsx) */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -53,6 +80,7 @@
   --color-cream: var(--bg-white);
   --color-ink: var(--text-primary);
   --color-ink-soft: var(--accent-hover);
+  --color-body: var(--text-body);
   --color-stone: var(--text-secondary);
   --color-stone-light: var(--text-muted);
   --color-line: var(--border-soft);
@@ -170,6 +198,41 @@
     animation: scroll-bounce 1.8s ease-in-out infinite;
   }
 
+  /* Loader progress shimmer — a gold sliver sweeping a track. */
+  @keyframes loader-shimmer {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(420%); }
+  }
+  .loader-shimmer {
+    animation: loader-shimmer 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+
+  /* Hero aurora — a slow, breathing gold glow behind the headline. */
+  @keyframes aurora-drift {
+    0%, 100% { transform: translate3d(-6%, -4%, 0) scale(1); opacity: 0.55; }
+    50% { transform: translate3d(6%, 4%, 0) scale(1.15); opacity: 0.85; }
+  }
+  .aurora {
+    background: radial-gradient(
+      40% 45% at 50% 45%,
+      color-mix(in srgb, var(--highlight) 38%, transparent) 0%,
+      transparent 70%
+    );
+    filter: blur(36px);
+    animation: aurora-drift 11s ease-in-out infinite;
+  }
+
+  /* Gentle float for accent ornaments. */
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .animate-float-slow { animation: float-slow 6s ease-in-out infinite; }
+
+  /* Blinking caret for the streaming/typing feel. */
+  @keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  .animate-caret { animation: caret-blink 1s step-end infinite; }
+
   @media (prefers-reduced-motion: reduce) {
     [data-animate],
     [data-animate='stagger'] > *,
@@ -179,6 +242,10 @@
       transition: none !important;
       animation: none !important;
     }
-    .animate-scroll-bounce { animation: none !important; }
+    .animate-scroll-bounce,
+    .loader-shimmer,
+    .aurora,
+    .animate-float-slow,
+    .animate-caret { animation: none !important; }
   }
 }
