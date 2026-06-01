@@ -16,8 +16,16 @@ logger = logging.getLogger(__name__)
 # network round-trip to /auth/v1/user on every search. PyJWKClient caches the
 # fetched keys, so only the first verification hits the network.
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+# Supabase's /auth/v1 routes sit behind Kong, which rejects requests without an
+# `apikey` header (HTTP 401) — that was the production bug: the JWKS fetch from
+# Railway was unauthenticated and failed, so verify_jwt fell through to None and
+# every logged-in user got the anonymous quota. Either key is accepted here.
+_SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
 _jwks_client: jwt.PyJWKClient | None = (
-    jwt.PyJWKClient(f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    jwt.PyJWKClient(
+        f"{_SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+        headers={"apikey": _SUPABASE_KEY} if _SUPABASE_KEY else {},
+    )
     if _SUPABASE_URL
     else None
 )
