@@ -85,6 +85,7 @@ def check_user(user_id: str, tier: str) -> dict:
     Upserts the daily row on success.
     On any Supabase error: allows through (fail open) rather than blocking users.
     """
+    print(f"DEBUG user_id={user_id} ip=N/A tier={tier}", flush=True)
     limits = LIMITS.get(tier, LIMITS["free"])
 
     if not sb:

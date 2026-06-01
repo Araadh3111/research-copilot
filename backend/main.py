@@ -127,8 +127,10 @@ async def search(request: SearchRequest, http_request: Request):
         )
 
     # ── 3. Quota check ────────────────────────────────────────────────────────
+    print(f"DEBUG auth header present: {'authorization' in http_request.headers}", flush=True)
     jwt = _extract_jwt(http_request)
     user_id = await asyncio.to_thread(verify_jwt, jwt) if jwt else None
+    print(f"DEBUG user_id extracted: {user_id}", flush=True)
 
     if user_id:
         tier = await asyncio.to_thread(get_tier, user_id)
