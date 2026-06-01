@@ -1,49 +1,19 @@
-"use client"
+import { createClient } from "@/utils/supabase/server"
+import { LandingPage } from "@/components/landing/landing-page"
+import { SearchApp } from "@/components/app/search-app"
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/utils/supabase/client"
-import { Navbar } from "@/components/navbar"
-import { Hero } from "@/components/hero"
-import { LandingContent } from "@/components/landing-content"
-import { Footer } from "@/components/footer"
+// Server-enforced routing: the session is read on the server (cookies kept fresh
+// by proxy.ts), so logged-out visitors are served the marketing landing page and
+// logged-in users get the search interface — the wrong UI is never sent to the
+// client, not merely hidden with CSS.
+export default async function Page() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-export default function Page() {
-  const [authState, setAuthState] = useState<"loading" | "authed" | "anon">("loading")
-  const supabase = createClient()
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setAuthState(data.user ? "authed" : "anon")
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthState(session?.user ? "authed" : "anon")
-    })
-
-    return () => subscription.unsubscribe()
-  }, [supabase])
-
-  if (authState === "loading") {
-    return <div className="min-h-screen" style={{ background: "#FAFAF9" }} />
+  if (user) {
+    return <SearchApp userEmail={user.email ?? undefined} />
   }
-
-  if (authState === "authed") {
-    return (
-      <main className="min-h-screen" style={{ background: "#FAFAF9" }}>
-        <Navbar variant="app" />
-        <Hero />
-        <Footer />
-      </main>
-    )
-  }
-
-  return (
-    <main className="min-h-screen" style={{ background: "#FAFAF9" }}>
-      <Navbar variant="landing" />
-      <LandingContent />
-      <Footer />
-    </main>
-  )
+  return <LandingPage />
 }

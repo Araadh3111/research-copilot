@@ -1,36 +1,65 @@
 @import 'tailwindcss';
 @plugin "@tailwindcss/typography";
 
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Warm parchment palette. One black accent. Gold used sparingly.
+   Editorial / academic-premium — Wonders AI meets Linear. */
 :root {
-  --background: #FAFAF9;
-  --foreground: #1C1917;
-  --card: #FFFFFF;
-  --card-foreground: #1C1917;
-  --popover: #FFFFFF;
-  --popover-foreground: #1C1917;
-  --primary: #2563EB;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F5F4F2;
-  --secondary-foreground: #1C1917;
-  --muted: #F5F4F2;
-  --muted-foreground: #78716C;
-  --accent: #EFF6FF;
-  --accent-foreground: #1D4ED8;
+  /* Semantic surfaces */
+  --bg-primary: #F5F0E8;     /* warm parchment beige */
+  --bg-secondary: #EDE8DC;   /* slightly darker beige for cards */
+  --bg-white: #FDFCF9;       /* near-white surface */
+  --text-primary: #1A1714;   /* warm near-black */
+  --text-secondary: #6B6560; /* warm grey */
+  --text-muted: #9E9890;     /* lighter warm grey */
+  --accent: #1A1714;         /* black — main CTAs */
+  --accent-hover: #3D3530;   /* dark brown hover */
+  --border-soft: #DDD8CE;    /* warm light border */
+  --border-strong: #C5BFB4;  /* stronger border */
+  --highlight: #8B6914;      /* warm gold */
+
+  /* shadcn-style aliases so existing UI primitives inherit the new look */
+  --background: var(--bg-primary);
+  --foreground: var(--text-primary);
+  --card: var(--bg-white);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-white);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg-white);
+  --secondary: var(--bg-secondary);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--bg-secondary);
+  --muted-foreground: var(--text-secondary);
+  --accent-color: var(--bg-secondary);
+  --accent-foreground: var(--text-primary);
   --destructive: #DC2626;
-  --destructive-foreground: #FFFFFF;
-  --border: #E5E4E2;
-  --input: #E5E4E2;
-  --ring: #2563EB;
+  --destructive-foreground: #FDFCF9;
+  --border: var(--border-soft);
+  --input: var(--border-soft);
+  --ring: var(--accent);
   --radius: 0.625rem;
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
 }
 
 @theme inline {
-  --font-sans: var(--font-inter, 'Inter', sans-serif);
+  /* Fonts (next/font injects the --font-* variables in layout.tsx) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, 'Times New Roman', serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, 'JetBrains Mono', monospace;
+
+  /* Semantic color utilities: bg-paper, text-ink, border-line, text-gold … */
+  --color-paper: var(--bg-primary);
+  --color-parchment: var(--bg-secondary);
+  --color-cream: var(--bg-white);
+  --color-ink: var(--text-primary);
+  --color-ink-soft: var(--accent-hover);
+  --color-stone: var(--text-secondary);
+  --color-stone-light: var(--text-muted);
+  --color-line: var(--border-soft);
+  --color-line-strong: var(--border-strong);
+  --color-gold: var(--highlight);
+
+  /* shadcn token bridges */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -43,18 +72,13 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-accent: var(--accent-color);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -65,7 +89,96 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    /* Never let a wide child (e.g. the scrollable demo matrix) push the whole
+       document past the viewport and clip the centered layout on mobile. */
+    overflow-x: hidden;
+    max-width: 100%;
+  }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+/* ── Subtle hero grid texture (≈3% opacity hairlines) ──────────────────────── */
+.grid-texture {
+  background-image:
+    linear-gradient(to right, rgba(26, 23, 20, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 23, 20, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 55%, transparent 100%);
+}
+
+/* ── Scroll-reveal animation system (Intersection Observer adds .in-view) ──── */
+@layer utilities {
+  [data-animate] {
+    opacity: 0;
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    will-change: opacity, transform;
+  }
+  [data-animate='fade-up'] {
+    transform: translateY(40px);
+  }
+  [data-animate='fade-in'] {
+    transform: none;
+  }
+  [data-animate].in-view {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Stagger: container stays visible; its direct children animate in sequence. */
+  [data-animate='stagger'] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  [data-animate='stagger'] > * {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+  }
+  [data-animate='stagger'].in-view > * {
+    opacity: 1;
+    transform: none;
+  }
+  [data-animate='stagger'].in-view > *:nth-child(1) { transition-delay: 0ms; }
+  [data-animate='stagger'].in-view > *:nth-child(2) { transition-delay: 150ms; }
+  [data-animate='stagger'].in-view > *:nth-child(3) { transition-delay: 300ms; }
+  [data-animate='stagger'].in-view > *:nth-child(4) { transition-delay: 450ms; }
+  [data-animate='stagger'].in-view > *:nth-child(5) { transition-delay: 600ms; }
+
+  /* Hero word-by-word entrance on load. */
+  @keyframes word-rise {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .word-rise > span {
+    display: inline-block;
+    opacity: 0;
+    animation: word-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes scroll-bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.5; }
+    50% { transform: translateY(6px); opacity: 1; }
+  }
+  .animate-scroll-bounce {
+    animation: scroll-bounce 1.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-animate],
+    [data-animate='stagger'] > *,
+    .word-rise > span {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+      animation: none !important;
+    }
+    .animate-scroll-bounce { animation: none !important; }
   }
 }

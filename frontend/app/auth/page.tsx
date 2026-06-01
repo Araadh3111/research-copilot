@@ -125,23 +125,23 @@ export default function AuthPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 text-foreground">
-      <Card className="w-full max-w-sm">
+    <main className="flex min-h-screen flex-col items-center justify-center bg-paper px-6 text-ink">
+      <Card className="w-full max-w-[400px] rounded-2xl border-line bg-cream shadow-sm">
         <CardHeader className="text-center">
-          <a href="/" className="mx-auto mb-2 flex items-center gap-2">
+          <a href="/" className="mx-auto mb-2 flex items-center gap-2.5">
             <Image src="/logo.svg" alt="Researca logo" width={28} height={28} />
-            <span className="text-[15px] font-semibold tracking-tight">Researca</span>
+            <span className="font-serif text-lg font-semibold tracking-tight">Researca</span>
           </a>
           {loadingUser ? (
-            <CardTitle>Loading…</CardTitle>
+            <CardTitle className="font-serif text-2xl">Loading…</CardTitle>
           ) : user ? (
             <>
-              <CardTitle>You're signed in</CardTitle>
+              <CardTitle className="font-serif text-2xl">You&apos;re signed in</CardTitle>
               <CardDescription>{user.email}</CardDescription>
             </>
           ) : (
             <>
-              <CardTitle>
+              <CardTitle className="font-serif text-2xl">
                 {mode === "login" ? "Welcome back" : "Create your account"}
               </CardTitle>
               <CardDescription>
@@ -276,6 +276,12 @@ export default function AuthPage() {
           )
         )}
       </Card>
+
+      {!loadingUser && !user && (
+        <p className="mt-6 text-center text-xs text-stone-light">
+          Free · 10 searches/month · No credit card
+        </p>
+      )}
     </main>
   )
 }
