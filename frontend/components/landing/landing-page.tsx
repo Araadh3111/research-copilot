@@ -7,7 +7,6 @@ import { useCountUp } from "@/lib/use-count-up"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Magnetic } from "@/components/magnetic"
-import { Loader, LOADERS, GooDefs } from "@/components/loaders"
 
 // ── Hardcoded demo data (static — looks exactly like real Researca output) ────
 const DEMO_ROWS = [
@@ -285,29 +284,6 @@ export function LandingPage() {
                 <DemoBody />
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* TEMP: loader picker — remove once a winner is chosen ──────────────────── */}
-      <section className="border-y border-dashed border-line-strong bg-paper px-6 py-16">
-        <div className="mx-auto max-w-5xl">
-          <p className="mb-8 text-center text-[12px] font-semibold uppercase tracking-[0.14em] text-gold">
-            Loader picker · temporary
-          </p>
-          <GooDefs />
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-            {LOADERS.map((l, i) => (
-              <div
-                key={l.name}
-                className="flex flex-col items-center gap-4 rounded-xl border border-line bg-cream p-6"
-              >
-                <div className="flex h-[130px] items-center justify-center">
-                  <Loader index={i} size={130} />
-                </div>
-                <span className="text-center text-[12px] font-medium text-stone">{l.name}</span>
-              </div>
-            ))}
           </div>
         </div>
       </section>
