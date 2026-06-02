@@ -32,6 +32,7 @@ type QuotaError = {
   tier: string
   limit_type: "daily" | "monthly" | "total"
   resets_at: string | null
+  message?: string | null
 }
 
 export function SearchApp({ userEmail, initialTier }: { userEmail?: string; initialTier?: string }) {
@@ -43,6 +44,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [loading, setLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [invalidQuery, setInvalidQuery] = useState<string | null>(null)
   const [quotaError, setQuotaError] = useState<QuotaError | null>(null)
   const [papers, setPapers] = useState<Paper[]>([])
   const [synthesis, setSynthesis] = useState("")
@@ -85,6 +87,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
     setLoading(true)
     setStreaming(false)
     setError(null)
+    setInvalidQuery(null)
     setQuotaError(null)
     setPapers([])
     setSynthesis("")
@@ -112,11 +115,22 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           return
         }
 
+        // Non-research input — show a friendly inline hint, not a page error.
+        if (data?.error === "invalid_query") {
+          setInvalidQuery(
+            typeof data.message === "string" && data.message.trim()
+              ? data.message
+              : "Please enter a research topic.",
+          )
+          return
+        }
+
         if (data?.error === "quota_exceeded") {
           setQuotaError({
             tier: data.tier ?? "anonymous",
             limit_type: data.limit_type ?? "daily",
             resets_at: data.resets_at ?? null,
+            message: typeof data.message === "string" ? data.message : null,
           })
           return
         }
@@ -313,6 +327,17 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </div>
         </form>
 
+        {/* Invalid-query hint — friendly, inline, right under the search bar */}
+        {invalidQuery && (
+          <p
+            className="mt-3 max-w-[680px] text-sm text-stone"
+            role="alert"
+            aria-live="polite"
+          >
+            {invalidQuery}
+          </p>
+        )}
+
         {/* Quota line */}
         {!quotaError && (
           <p className="mt-3 text-xs text-stone-light">
@@ -336,9 +361,11 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         {quotaError && (
           <div className="mt-5 w-full max-w-[680px] rounded-2xl border border-line bg-cream p-6 text-center shadow-sm">
             <p className="text-sm font-medium text-ink">
-              {quotaError.limit_type === "monthly"
-                ? "You've reached your monthly search limit."
-                : "You've reached your daily search limit."}
+              {quotaError.message
+                ? quotaError.message
+                : quotaError.limit_type === "monthly"
+                  ? "You've reached your monthly search limit."
+                  : "You've reached your daily search limit."}
             </p>
             {quotaError.resets_at && (
               <p className="mt-1 text-xs text-stone">

@@ -36,6 +36,41 @@ Respond with ONLY this JSON shape (no other text):
 }}"""
 
 
+_VALIDATE_SYSTEM = (
+    "You are a query classifier for an academic research search engine. "
+    "Decide whether the user's input is a genuine research topic or question "
+    "that academic papers could answer. Greetings, small talk, gibberish, "
+    "random characters, profanity, and navigational commands are NOT research. "
+    "A short topic phrase (e.g. 'CRISPR gene editing') counts as research. "
+    "When genuinely unsure, lean towards research. "
+    'Reply with ONLY this JSON, nothing else: {"is_research": true} or {"is_research": false}.'
+)
+
+
+def validate_query(raw_query: str) -> bool:
+    """Return True if the query looks like a genuine research question.
+
+    Uses Haiku for a fast, cheap classification. Fails OPEN (returns True) on any
+    error so a model/parse hiccup never blocks a legitimate search.
+    """
+    try:
+        msg = _client.messages.create(
+            model=MODEL_HAIKU,
+            max_tokens=16,
+            temperature=0,
+            system=_VALIDATE_SYSTEM,
+            messages=[{"role": "user", "content": f'Input: "{raw_query}"'}],
+        )
+        text = msg.content[0].text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        return bool(json.loads(text).get("is_research", True))
+    except Exception:
+        return True
+
+
 def process_query(raw_query: str, tier: str = "free") -> dict:
     """Return {cleaned_query, search_angles}.
 

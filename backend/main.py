@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from query_processor import process_query
+from query_processor import process_query, validate_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
 from synthesizer import synthesize_stream, SynthesisError
@@ -78,6 +78,25 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _quota_message(limit_type: str, tier: str) -> str:
+    """Human-readable quota message for the 429 body shown to the user."""
+    upsell = tier not in ("pro", "lab")
+    if limit_type == "monthly":
+        return (
+            "Monthly search limit reached. Sign up for Pro to continue."
+            if upsell
+            else "Monthly search limit reached. It resets at the start of next month."
+        )
+    if limit_type == "daily":
+        return (
+            "Daily search limit reached. Come back tomorrow or upgrade to Pro to continue."
+            if upsell
+            else "Daily search limit reached. It resets tomorrow."
+        )
+    # anonymous "total" lifetime cap
+    return "You've used your free searches. Sign up for a free account to keep researching."
+
+
 def _estimated_search_cost(tier: str, output_mode: str) -> float:
     """Estimate USD cost for one search based on model (via tier) and output mode."""
     is_sonnet = FORCE_SONNET or tier in ("pro", "lab")
@@ -141,6 +160,23 @@ async def search(request: SearchRequest, http_request: Request):
             stream_from_cache(), media_type="text/event-stream", headers=_SSE_HEADERS
         )
 
+    # ── 2.5 Query validation (cache misses only — cached queries were valid) ──
+    # A fast Haiku classification weeds out greetings, gibberish and non-research
+    # input before we spend any quota or run the full pipeline. Runs BEFORE the
+    # quota check so an invalid query never consumes a search. Fails open inside
+    # validate_query, so a model hiccup never blocks a real search.
+    if not await asyncio.to_thread(validate_query, raw_query):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_query",
+                "message": (
+                    "Please enter a research topic. "
+                    "Try: 'CRISPR gene editing' or 'prosthetic arm control'"
+                ),
+            },
+        )
+
     # ── 3. Quota check ────────────────────────────────────────────────────────
     tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
 
@@ -179,6 +215,7 @@ async def search(request: SearchRequest, http_request: Request):
                 "limit_type": quota["limit_type"],
                 "tier": quota["tier"],
                 "resets_at": quota.get("resets_at"),
+                "message": _quota_message(quota["limit_type"], quota["tier"]),
             },
         )
 

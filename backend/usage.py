@@ -217,11 +217,6 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
         daily_count: int = row.data[0]["daily_count"] if row.data else 0
         today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if row.data else 0.0
 
-        if limits["daily"] is not None and daily_count >= limits["daily"]:
-            tomorrow = today + timedelta(days=1)
-            resets = datetime.combine(tomorrow, dt_time.min, timezone.utc).isoformat()
-            return {"allowed": False, "limit_type": "daily", "tier": tier, "resets_at": resets}
-
         # ── Monthly counts + cost ────────────────────────────────────────────
         monthly_count = 0
         monthly_cost = 0.0
@@ -237,16 +232,34 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
             monthly_count = sum(r["daily_count"] for r in (m_rows.data or []))
             monthly_cost = sum((r.get("estimated_cost_usd") or 0.0) for r in (m_rows.data or []))
 
-            if limits["monthly"] and monthly_count >= limits["monthly"]:
-                next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-                resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
-                return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": resets}
+        # Diagnostic — current usage vs the tier's ceilings (visible in Railway logs).
+        print(
+            f"[usage] user={user_id} tier={tier} "
+            f"daily={daily_count}/{limits['daily']} "
+            f"monthly={monthly_count}/{limits['monthly']} "
+            f"cost=${monthly_cost:.3f}/{limits.get('cost_monthly')}",
+            flush=True,
+        )
 
-            cost_ceiling = limits.get("cost_monthly")
-            if cost_ceiling and monthly_cost >= cost_ceiling:
-                next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-                resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
-                return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": resets}
+        # ── Enforce ceilings — when count >= limit, RETURN allowed:False ─────
+        # (the bug was the limit being logged but the request still proceeding).
+        if limits["daily"] is not None and daily_count >= limits["daily"]:
+            tomorrow = today + timedelta(days=1)
+            resets = datetime.combine(tomorrow, dt_time.min, timezone.utc).isoformat()
+            print(f"[usage] BLOCK daily user={user_id} {daily_count}>={limits['daily']}", flush=True)
+            return {"allowed": False, "limit_type": "daily", "tier": tier, "resets_at": resets}
+
+        next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+        month_resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
+
+        if limits["monthly"] and monthly_count >= limits["monthly"]:
+            print(f"[usage] BLOCK monthly user={user_id} {monthly_count}>={limits['monthly']}", flush=True)
+            return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": month_resets}
+
+        cost_ceiling = limits.get("cost_monthly")
+        if cost_ceiling and monthly_cost >= cost_ceiling:
+            print(f"[usage] BLOCK cost user={user_id} ${monthly_cost:.3f}>=${cost_ceiling}", flush=True)
+            return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": month_resets}
 
         # ── Increment count + cost ────────────────────────────────────────────
         sb.table("user_usage").upsert(
@@ -261,8 +274,12 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
 
         return _allow(tier, limits, daily_count + 1, monthly_count + 1)
 
-    except Exception:
+    except Exception as e:
         # Supabase hiccup — fail open so users aren't blocked by an infra error.
+        # NOTE: this path returns allowed:True even at "0 remaining", so a flaky
+        # Supabase read looks like "limit not enforced". The log line below makes
+        # that visible instead of silent.
+        print(f"[usage] FAIL-OPEN user={user_id} tier={tier} err={type(e).__name__}: {e}", flush=True)
         return _allow(tier, limits, limits["daily"], limits["monthly"] or 0)
 
 
