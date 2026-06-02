@@ -55,6 +55,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [showUpgrade, setShowUpgrade] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [historyRefresh, setHistoryRefresh] = useState(0)
+  const [waitlistEmail, setWaitlistEmail] = useState("")
+  const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "done" | "error">("idle")
+  const [waitlistMsg, setWaitlistMsg] = useState<string | null>(null)
 
   const isPro = tier === "pro" || tier === "lab"
 
@@ -232,6 +235,45 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   async function handleLogout() {
     await supabase.auth.signOut()
     router.refresh()
+  }
+
+  function closeUpgrade() {
+    setShowUpgrade(false)
+    setWaitlistState("idle")
+    setWaitlistMsg(null)
+    setWaitlistEmail("")
+  }
+
+  async function submitWaitlist(e: React.FormEvent) {
+    e.preventDefault()
+    const email = waitlistEmail.trim()
+    if (!email || waitlistState === "loading") return
+    setWaitlistState("loading")
+    setWaitlistMsg(null)
+    try {
+      const res = await fetch(`${API_BASE_URL}/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok) {
+        setWaitlistState("done")
+        setWaitlistMsg(
+          data?.already
+            ? "You're already on the list — we'll be in touch."
+            : "You're on the list. We'll email you the moment Pro launches.",
+        )
+      } else {
+        setWaitlistState("error")
+        setWaitlistMsg(
+          typeof data?.message === "string" ? data.message : "Something went wrong. Please try again.",
+        )
+      }
+    } catch {
+      setWaitlistState("error")
+      setWaitlistMsg("Couldn't reach the server. Please try again.")
+    }
   }
 
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
@@ -440,7 +482,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
       {showUpgrade && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#1A1714]/40 p-4 backdrop-blur-sm dark:bg-black/60"
-          onClick={() => setShowUpgrade(false)}
+          onClick={closeUpgrade}
         >
           <div
             role="dialog"
@@ -451,7 +493,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             <button
               type="button"
               aria-label="Close"
-              onClick={() => setShowUpgrade(false)}
+              onClick={closeUpgrade}
               className="absolute right-4 top-4 text-stone-light transition-colors hover:text-ink"
             >
               <X className="size-4" />
@@ -460,22 +502,53 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               <Zap className="size-5" />
             </span>
             <h3 className="mt-4 font-serif text-xl font-semibold text-ink">
-              Comparison Matrix is a Pro feature
+              Unlock Comparison Matrix
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-stone">
-              Upgrade to Pro to compare papers side-by-side by methodology, findings, and gaps —
-              plus 200 searches/month and CSV + BibTeX export.
+              Pro users get Matrix + CSV export + BibTeX + 30 searches/day.
             </p>
-            <a
-              href="mailto:araadh3111@gmail.com?subject=Researca%20Pro"
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft"
-            >
-              <Zap className="size-4" />
-              Upgrade to Pro
-            </a>
+            <p className="mt-3 text-sm font-medium text-ink">
+              $29/month <span className="font-normal text-stone">— coming soon</span>
+            </p>
+
+            {waitlistState === "done" ? (
+              <p className="mt-6 rounded-xl border border-gold/30 bg-gold/10 px-4 py-3 text-sm text-ink">
+                {waitlistMsg}
+              </p>
+            ) : (
+              <form onSubmit={submitWaitlist} className="mt-6 space-y-2 text-left">
+                <input
+                  type="email"
+                  required
+                  value={waitlistEmail}
+                  onChange={(e) => setWaitlistEmail(e.target.value)}
+                  placeholder="you@university.edu"
+                  aria-label="Email for Pro waitlist"
+                  className="w-full rounded-full border border-line bg-paper px-4 py-2.5 text-sm text-ink outline-none transition-colors focus:border-line-strong"
+                />
+                <button
+                  type="submit"
+                  disabled={waitlistState === "loading"}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {waitlistState === "loading" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Zap className="size-4" />
+                  )}
+                  Notify me when Pro launches
+                </button>
+                {waitlistState === "error" && waitlistMsg && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {waitlistMsg}
+                  </p>
+                )}
+              </form>
+            )}
+
             <button
               type="button"
-              onClick={() => setShowUpgrade(false)}
+              onClick={closeUpgrade}
               className="mt-2 w-full rounded-full px-5 py-2 text-sm text-stone transition-colors hover:text-ink"
             >
               Maybe later

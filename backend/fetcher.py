@@ -10,7 +10,7 @@ load_dotenv()
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
 
-S2_FIELDS = "title,abstract,year,citationCount,authors,openAccessPdf,url,externalIds"
+S2_FIELDS = "title,abstract,year,citationCount,authors,openAccessPdf,url,externalIds,venue"
 
 # Per-tier sizing — override via env; free defaults shown here.
 POOL_SIZE = int(os.getenv("POOL_SIZE", "20"))

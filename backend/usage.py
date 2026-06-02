@@ -54,7 +54,10 @@ def _jwks_client_for(issuer: str) -> jwt.PyJWKClient | None:
 # daily = None means no daily cap (only the monthly limit binds).
 LIMITS: dict[str, dict] = {
     "anonymous": {"daily": 2,    "monthly": None, "cost_monthly": None},
-    "free":      {"daily": 10,   "monthly": 20,   "cost_monthly": 0.50},
+    # Free = 10 searches / month, matching the "10 searches / month" UI copy.
+    # daily is None so the *monthly* cap binds first and the 429 reports the
+    # correct "resets next month" — not a misleading "resets tomorrow".
+    "free":      {"daily": None, "monthly": 10,   "cost_monthly": 0.50},
     "pro":       {"daily": None, "monthly": 200,  "cost_monthly": 8.00},
     "lab":       {"daily": None, "monthly": 300,  "cost_monthly": 20.00},
 }

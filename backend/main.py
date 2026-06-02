@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 from collections import defaultdict, deque
 
@@ -16,6 +17,7 @@ from synthesizer import synthesize_stream, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
 from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, record_search
 from synthesizer import FORCE_SONNET
+from supabase_client import sb
 
 app = FastAPI(title="Researca Core OS Engine API")
 
@@ -38,6 +40,13 @@ class SearchRequest(BaseModel):
     query: str
     level: str = "intermediate"
     output_mode: str = "synthesis"
+
+
+class WaitlistRequest(BaseModel):
+    email: str
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10"))
@@ -305,6 +314,45 @@ async def auth_debug(http_request: Request):
         "user_id": user_id,
         "tier": tier,
     }
+
+
+@app.post("/waitlist")
+async def waitlist(req: WaitlistRequest):
+    """Capture a Pro-launch waitlist email into the pro_waitlist table.
+
+    Inserts with the service-role client (bypasses RLS). A duplicate email is
+    treated as success so the user always gets a clean confirmation. Requires the
+    pro_waitlist table to exist (see the SQL in the deploy notes); returns 503 if
+    Supabase isn't configured.
+    """
+    email = (req.email or "").strip().lower()
+    if not _EMAIL_RE.match(email) or len(email) > 254:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_email", "message": "Please enter a valid email address."},
+        )
+    if not sb:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "unavailable", "message": "The waitlist is temporarily unavailable. Try again later."},
+        )
+    try:
+        await asyncio.to_thread(
+            lambda: sb.table("pro_waitlist").insert({"email": email}).execute()
+        )
+    except Exception as e:
+        msg = str(e).lower()
+        # Unique-violation → already on the list. Treat as success.
+        if "duplicate" in msg or "unique" in msg or "23505" in msg:
+            print(f"[waitlist] duplicate {email!r}", flush=True)
+            return {"ok": True, "already": True}
+        print(f"[waitlist] insert failed {email!r}: {type(e).__name__}: {e}", flush=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "save_failed", "message": "Couldn't save your email. Please try again later."},
+        )
+    print(f"[waitlist] added {email!r}", flush=True)
+    return {"ok": True}
 
 
 @app.get("/")
