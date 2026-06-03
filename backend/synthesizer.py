@@ -19,6 +19,7 @@ def _select_model(tier: str) -> str:
     return MODEL_SONNET if tier in ("pro", "lab") else MODEL_HAIKU
 
 
+
 class SynthesisError(Exception):
     """The Anthropic call failed (auth, rate limit, timeout, connection, etc.).
 
