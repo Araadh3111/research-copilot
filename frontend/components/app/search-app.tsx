@@ -279,7 +279,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
-    <div className="flex min-h-screen bg-paper">
+    <div className="paper-type flex min-h-screen bg-paper font-sans">
       <SearchHistorySidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
@@ -321,14 +321,14 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         </p>
 
         <form onSubmit={handleSearch} className="mt-7 w-full max-w-[680px]">
-          <div className="flex items-center rounded-full border border-line bg-cream px-2 py-1.5 shadow-sm transition-all focus-within:border-line-strong focus-within:shadow-md">
+          <div className="flex items-center rounded-full border border-line bg-cream px-2 py-1.5 shadow-paper transition-all focus-within:border-line-strong focus-within:shadow-md">
             <Search className="ml-3 size-4 shrink-0 text-stone-light" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g. CRISPR gene editing therapeutic applications"
               aria-label="Search query"
-              className="h-10 flex-1 bg-transparent px-3 text-sm text-ink outline-none placeholder:text-stone-light"
+              className="h-10 flex-1 bg-transparent px-3 text-base text-ink outline-none placeholder:text-stone-light"
             />
             <div className="relative mx-1 hidden sm:block">
               <select
@@ -346,7 +346,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             <button
               type="submit"
               disabled={loading}
-              className="ml-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-ink px-5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
+              className="ml-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-ink px-5 font-serif text-sm font-medium text-cream transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowRight className="size-3.5" />}
               Search
@@ -429,7 +429,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               type="button"
               onClick={() => handleModeToggle("synthesis")}
               disabled={loading}
-              className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+              className={`rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                 outputMode === "synthesis" ? "bg-ink text-cream" : "text-stone hover:text-ink"
               }`}
             >
@@ -441,7 +441,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
                 onClick={() => handleModeToggle("matrix")}
                 disabled={loading}
                 aria-disabled={!isPro}
-                className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                   !isPro
                     ? "text-stone-light"
                     : outputMode === "matrix"

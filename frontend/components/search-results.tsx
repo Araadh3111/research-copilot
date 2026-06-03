@@ -87,7 +87,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
 
       {/* Synthesis / Matrix card */}
       {(hasSynthesis || streaming) && (
-        <div className="rounded-2xl border border-line bg-cream p-6 shadow-sm">
+        <div className="rounded-2xl border border-line bg-cream p-6 shadow-paper">
           <div className="mb-5 flex items-center gap-2.5">
             <span className="inline-flex size-8 items-center justify-center rounded-lg bg-parchment text-ink">
               {isMatrix ? <LayoutGrid className="size-4" /> : <Sparkles className="size-4" />}
@@ -111,7 +111,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                       thead: ({ children }) => <thead>{children}</thead>,
                       tbody: ({ children }) => <tbody>{children}</tbody>,
                       th: ({ children }) => (
-                        <th className="border-b border-line bg-paper px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-stone first:w-2/5">
+                        <th className="border-b border-line bg-ink px-5 py-3 text-left font-serif text-[11px] font-semibold uppercase tracking-wider text-cream first:w-2/5">
                           {children}
                         </th>
                       ),
@@ -123,7 +123,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                         const missing = isMissingCell(children)
                         return (
                           <td
-                            className={`px-4 py-3.5 align-top text-[13px] leading-relaxed first:font-medium first:text-ink ${
+                            className={`px-5 py-4 align-top text-[13px] leading-relaxed first:font-mono first:font-medium first:text-ink ${
                               missing
                                 ? "bg-red-100 border border-red-300 text-red-400 dark:bg-red-950/30 dark:border-red-900/60"
                                 : "text-stone"
@@ -149,7 +149,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               </>
             ) : (
               <div
-                className="prose prose-sm max-w-none text-pretty leading-[1.7]
+                className="prose max-w-none text-pretty leading-[1.7] prose-p:font-light prose-li:font-light
                   prose-headings:font-serif prose-headings:text-ink prose-headings:font-semibold
                   prose-p:text-body prose-li:text-body
                   prose-strong:text-ink prose-a:text-ink prose-a:font-medium
@@ -177,7 +177,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
             <div className="mt-6 space-y-2.5">
               <div className="flex items-center gap-2">
                 <Search className="size-4 text-gold" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-stone">
+                <span className="font-serif text-[11px] font-semibold uppercase tracking-wider text-stone">
                   Research Gaps
                 </span>
               </div>
@@ -187,10 +187,10 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                     🔍
                   </span>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gold">
+                    <p className="font-serif text-[10px] font-semibold uppercase tracking-wider text-gold">
                       Research Gap
                     </p>
-                    <p className="mt-1 text-[13px] leading-relaxed text-body">{gap}</p>
+                    <p className="mt-1 text-[13px] italic leading-relaxed text-body">{gap}</p>
                   </div>
                 </div>
               ))}
@@ -227,7 +227,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
 
       {/* Papers */}
       {papers.length > 0 && (
-        <div className="rounded-2xl border border-line bg-cream p-6 shadow-sm">
+        <div className="rounded-2xl border border-line bg-cream p-6 shadow-paper">
           <div className="mb-5 flex items-center gap-2.5">
             <span className="inline-flex size-8 items-center justify-center rounded-lg bg-parchment text-ink">
               <BookOpen className="size-4" />

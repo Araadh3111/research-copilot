@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { Playfair_Display, Inter, JetBrains_Mono } from 'next/font/google'
+import { Playfair_Display, Inter, JetBrains_Mono, Roboto, Montserrat, PT_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
+// Marketing landing typography (left untouched).
 const playfair = Playfair_Display({
   subsets: ['latin'],
   variable: '--font-playfair',
@@ -16,6 +17,28 @@ const inter = Inter({
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jetbrains',
+  display: 'swap',
+})
+
+// Paper design system — Roboto (body), Montserrat (display/headings), PT Mono
+// (paper titles/citations). Self-hosted via next/font and opted into by the
+// search app through the `.paper-type` scope in globals.css. Roboto & Montserrat
+// are variable fonts, so the full 300–700 range is available without enumerating
+// weights; PT Mono is static and so requires an explicit weight.
+const roboto = Roboto({
+  subsets: ['latin'],
+  variable: '--font-roboto',
+  display: 'swap',
+})
+const montserrat = Montserrat({
+  subsets: ['latin'],
+  variable: '--font-montserrat',
+  display: 'swap',
+})
+const ptMono = PT_Mono({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-pt-mono',
   display: 'swap',
 })
 
@@ -36,7 +59,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${playfair.variable} ${inter.variable} ${jetbrainsMono.variable}`}
+      className={`${playfair.variable} ${inter.variable} ${jetbrainsMono.variable} ${roboto.variable} ${montserrat.variable} ${ptMono.variable}`}
       suppressHydrationWarning
     >
       <head>
