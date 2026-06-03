@@ -129,7 +129,7 @@ export default function AuthPage() {
       <div className="absolute right-5 top-5">
         <ThemeToggle />
       </div>
-      <Card className="w-full max-w-[400px] rounded-2xl border-line bg-cream shadow-sm">
+      <Card className="w-full max-w-[400px] rounded-2xl border-line bg-cream shadow-paper">
         <CardHeader className="text-center">
           <a href="/" className="mx-auto mb-2 flex items-center gap-2.5">
             <Logo size={30} />

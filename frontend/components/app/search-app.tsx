@@ -279,7 +279,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
-    <div className="paper-type flex min-h-screen bg-paper font-sans">
+    <div className="flex min-h-screen bg-paper">
       <SearchHistorySidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}

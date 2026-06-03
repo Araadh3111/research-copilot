@@ -69,12 +69,11 @@
 }
 
 @theme inline {
-  /* Fonts (next/font injects the --font-* variables in layout.tsx).
-     The search app overrides --paper-* (see `.paper-type` below) to swap in the
-     Paper system fonts; everywhere else these fall back to the original faces. */
-  --font-sans: var(--paper-body, var(--font-inter)), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--paper-display, var(--font-playfair)), Georgia, 'Times New Roman', serif;
-  --font-mono: var(--paper-mono, var(--font-jetbrains)), ui-monospace, 'JetBrains Mono', monospace;
+  /* Paper design system fonts (next/font injects the --font-* vars in layout.tsx).
+     Applied globally — the landing, auth page and search app all use these. */
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-pt-mono), ui-monospace, 'PT Mono', monospace;
 
   /* Semantic color utilities: bg-paper, text-ink, border-line, text-gold … */
   --color-paper: var(--bg-primary);
@@ -118,19 +117,6 @@
   --shadow-paper: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-/* ── Paper design system — typography scope ─────────────────────────────────
-   The search app adds `.paper-type` to opt its subtree into Paper's typefaces.
-   These custom properties feed the --font-sans/serif/mono definitions above,
-   which read `var(--paper-*, <original>)` — so inside the app every existing
-   font-sans / font-serif / font-mono utility renders in Roboto / Montserrat /
-   PT Mono, while the marketing landing (which never sets --paper-*) is left
-   untouched and keeps Playfair / Inter / JetBrains Mono. */
-.paper-type {
-  --paper-body: var(--font-roboto);        /* Roboto — body */
-  --paper-display: var(--font-montserrat); /* Montserrat — display / headings */
-  --paper-mono: var(--font-pt-mono);       /* PT Mono — paper titles / citations */
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -144,7 +130,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: 'cv11', 'ss01';
   }
 }
 
