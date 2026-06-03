@@ -111,7 +111,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                       thead: ({ children }) => <thead>{children}</thead>,
                       tbody: ({ children }) => <tbody>{children}</tbody>,
                       th: ({ children }) => (
-                        <th className="border-b border-line bg-ink px-5 py-3 text-left font-serif text-[11px] font-semibold uppercase tracking-wider text-cream first:w-2/5">
+                        <th className="border-b border-line bg-ink px-5 py-3 text-left font-serif text-[11px] font-semibold uppercase tracking-wider text-cream first:w-2/5 dark:bg-parchment dark:text-ink">
                           {children}
                         </th>
                       ),

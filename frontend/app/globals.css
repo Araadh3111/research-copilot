@@ -45,26 +45,27 @@
   --radius: 0.625rem;
 }
 
-/* ── Dark mode — same layout, deep warm canvas, GOLDEN text ─────────────────
-   The semantic tokens are aliased so that `ink` = primary text. Flipping
-   --text-primary to gold therefore (a) turns body/heading text gold and
-   (b) turns the solid `bg-ink` CTAs into gold buttons with dark labels
-   (text-cream = --bg-white = a dark surface here). One override block, whole
-   UI re-skinned, zero markup changes. */
+/* ── Dark mode — warm "paper at night" ──────────────────────────────────────
+   Warm near-black canvas with off-white ink. Gold is reserved as an ACCENT
+   (links, highlights, research-gap cards, focus) — never the body text, which
+   is what made the old all-gold theme unreadable. Because `ink` = --text-primary,
+   the solid `bg-ink` CTAs invert to a warm-white button with a dark label
+   (text-cream = --bg-white, a dark surface here). One override block re-skins the
+   whole UI with zero markup changes. */
 .dark {
-  --bg-primary: #14100B;      /* deep warm near-black canvas */
-  --bg-secondary: #1C1813;    /* card / section surface */
-  --bg-white: #221C14;        /* raised surface (also CTA label colour) */
-  --text-primary: #E8C572;    /* GOLDEN primary text + solid-button fill */
-  --text-body: #DCC183;       /* warm gold for long-form body copy */
-  --text-secondary: #C0A86E;  /* muted gold for body copy */
-  --text-muted: #8C7C58;      /* dim gold-grey for captions */
-  --accent: #E8C572;          /* gold */
-  --accent-hover: #F2D685;    /* brighter gold on hover */
-  --border-soft: #322A1E;     /* warm dark hairline */
-  --border-strong: #4A3F2C;   /* stronger warm border */
-  --highlight: #F2C95B;       /* vivid gold accent (badges, gaps) */
-  --destructive: #F08A7A;
+  --bg-primary: #15120D;      /* warm near-black canvas */
+  --bg-secondary: #1F1A14;    /* sections, pills, lifted surfaces */
+  --bg-white: #24201A;        /* cards / raised surfaces (also the dark label on solid CTAs) */
+  --text-primary: #F4EFE6;    /* warm off-white — headings + solid-button fill */
+  --text-body: #D3CBBC;       /* warm light grey — long-form body copy */
+  --text-secondary: #A69E8E;  /* muted warm grey — secondary text */
+  --text-muted: #948C7B;      /* low-emphasis captions */
+  --accent: #F4EFE6;          /* off-white — primary surfaces (mirrors light mode's black ink) */
+  --accent-hover: #E6E0D2;    /* slightly dimmed off-white on hover */
+  --border-soft: #37312A;     /* hairline that lifts cards off the canvas */
+  --border-strong: #4E473B;   /* stronger warm border */
+  --highlight: #E9C16B;       /* gold accent — links, badges, gaps, PDF, focus ring */
+  --destructive: #F08A7A;     /* soft red for errors */
   color-scheme: dark;
 }
 
