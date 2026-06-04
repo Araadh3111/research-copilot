@@ -36,6 +36,20 @@ type QuotaError = {
   message?: string | null
 }
 
+// Map low-level fetch/network failures to a friendly message instead of leaking
+// the browser's raw text (iOS Safari throws "Load failed"; Chrome "Failed to
+// fetch"). Anything else (a real API message) is passed through untouched.
+function describeError(err: unknown): string {
+  const fallback = "Something went wrong while contacting the research service."
+  if (err instanceof Error && err.message) {
+    if (/load failed|failed to fetch|networkerror|network request failed|connection|aborted/i.test(err.message)) {
+      return "Couldn't reach the research service. Check your connection and try again."
+    }
+    return err.message
+  }
+  return fallback
+}
+
 export function SearchApp({ userEmail, initialTier }: { userEmail?: string; initialTier?: string }) {
   const router = useRouter()
   const supabase = createClient()
@@ -240,11 +254,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         }
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Something went wrong while contacting the research service.",
-      )
+      setError(describeError(err))
       setStreaming(false)
     } finally {
       setLoading(false)
@@ -424,7 +434,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         )}
 
         {/* Quota line */}
-        {!quotaError && (
+        {!quotaError && !isPro && (
           <p className="mt-3 text-xs text-stone-light">
             {quota
               ? `${quota.remaining_monthly ?? quota.remaining_daily} searches remaining this month`
@@ -439,7 +449,21 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         </p>
 
         {error && (
-          <p className="mt-4 max-w-2xl text-sm text-destructive" role="alert">{error}</p>
+          <div
+            className="mt-4 flex max-w-2xl flex-col items-center gap-2 rounded-xl border border-line bg-cream px-4 py-3"
+            role="alert"
+          >
+            <p className="text-sm text-stone">{error}</p>
+            {submittedQuery && !loading && (
+              <button
+                type="button"
+                onClick={() => runSearch(submittedQuery, level, outputMode)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-1.5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft"
+              >
+                Retry
+              </button>
+            )}
+          </div>
         )}
 
         {/* Quota-exceeded wall */}

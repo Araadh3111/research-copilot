@@ -36,23 +36,33 @@ export function SearchHistorySidebar({
 }) {
   const [rows, setRows] = useState<HistoryRow[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
 
+  // Never throws — a network failure on mobile sets `failed` (shows a quiet
+  // retry) instead of becoming an unhandled rejection or a red error.
   const fetchHistory = useCallback(async () => {
-    const supabase = createClient()
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
+    try {
+      const supabase = createClient()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) {
+        setLoaded(true)
+        return
+      }
+      const { data, error } = await supabase
+        .from("search_history")
+        .select("id, query, output_mode, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50)
+      if (error) throw error
+      setRows((data as HistoryRow[]) ?? [])
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    } finally {
       setLoaded(true)
-      return
     }
-    const { data } = await supabase
-      .from("search_history")
-      .select("id, query, output_mode, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50)
-    setRows((data as HistoryRow[]) ?? [])
-    setLoaded(true)
   }, [])
 
   // Delete one history row. RLS ("own history delete") restricts this to the
@@ -100,7 +110,18 @@ export function SearchHistorySidebar({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
-            {loaded && rows.length === 0 ? (
+            {loaded && failed ? (
+              <div className="px-2 pt-6 text-sm leading-relaxed text-stone-light">
+                <p>Couldn&apos;t load your history.</p>
+                <button
+                  type="button"
+                  onClick={fetchHistory}
+                  className="mt-2 inline-flex items-center rounded-full border border-line bg-cream px-3 py-1 text-xs font-medium text-stone transition-colors hover:border-line-strong hover:text-ink"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : loaded && rows.length === 0 ? (
               <p className="px-2 pt-6 text-sm leading-relaxed text-stone-light">
                 Your searches will appear here
               </p>
