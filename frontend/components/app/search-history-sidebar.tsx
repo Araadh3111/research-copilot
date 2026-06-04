@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Clock } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clock, Trash2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
 import { createClient } from "@/utils/supabase/client"
@@ -55,6 +55,19 @@ export function SearchHistorySidebar({
     setLoaded(true)
   }, [])
 
+  // Delete one history row. RLS ("own history delete") restricts this to the
+  // caller's own rows. Optimistic: remove from the list immediately, refetch to
+  // restore it if the delete actually failed.
+  const deleteRow = useCallback(
+    async (id: string) => {
+      setRows((prev) => prev.filter((r) => r.id !== id))
+      const supabase = createClient()
+      const { error } = await supabase.from("search_history").delete().eq("id", id)
+      if (error) fetchHistory()
+    },
+    [fetchHistory],
+  )
+
   useEffect(() => {
     fetchHistory()
   }, [fetchHistory, refreshKey])
@@ -94,12 +107,12 @@ export function SearchHistorySidebar({
             ) : (
               <ul className="space-y-1">
                 {rows.map((row) => (
-                  <li key={row.id}>
+                  <li key={row.id} className="group relative">
                     <button
                       type="button"
                       onClick={() => onSelect(row.query)}
                       title={row.query}
-                      className="group w-full rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-cream"
+                      className="w-full rounded-lg px-2.5 py-2 pr-8 text-left transition-colors hover:bg-cream"
                     >
                       <span className="block truncate text-sm font-medium leading-snug text-ink">
                         {truncate(row.query)}
@@ -118,6 +131,17 @@ export function SearchHistorySidebar({
                           {formatDistanceToNow(new Date(row.created_at), { addSuffix: true })}
                         </span>
                       </span>
+                    </button>
+
+                    {/* Little delete button — appears on hover/focus of the row. */}
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(row.id)}
+                      aria-label={`Delete "${truncate(row.query, 30)}" from history`}
+                      title="Delete"
+                      className="absolute right-1.5 top-1.5 inline-flex size-6 items-center justify-center rounded-md text-stone-light opacity-0 transition-all hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-3.5" />
                     </button>
                   </li>
                 ))}
