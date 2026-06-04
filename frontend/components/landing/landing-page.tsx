@@ -480,7 +480,7 @@ export function LandingPage() {
               </p>
               <ul className="mt-7 space-y-3">
                 {[
-                  "200 searches / month",
+                  "120 searches / month",
                   "Comparison matrix",
                   "Everything in Free",
                   "Priority synthesis (Sonnet model)",
