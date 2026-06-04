@@ -14,9 +14,12 @@ from slowapi.errors import RateLimitExceeded
 from query_processor import process_query, validate_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
-from synthesizer import synthesize_stream, write_continuation_stream, SynthesisError
+from synthesizer import synthesize_stream, verify_claim, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
-from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, record_search
+from usage import (
+    check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, record_search,
+    check_matrix, check_verify, usage_summary,
+)
 from synthesizer import FORCE_SONNET
 from supabase_client import sb
 
@@ -86,10 +89,10 @@ class ShareRequest(BaseModel):
     output_mode: str = "synthesis"
 
 
-class WriteRequest(BaseModel):
-    query: str = ""
+class VerifyRequest(BaseModel):
+    claim: str = ""
     synthesis: str = ""
-    draft: str = ""
+    papers: list = []
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -137,14 +140,32 @@ def _estimated_search_cost(tier: str, output_mode: str) -> float:
 
 
 def _quota_exceeded_response(quota: dict) -> JSONResponse:
+    limit_type = quota.get("limit_type")
+    tier = quota.get("tier")
+    limit = quota.get("limit")
+    if limit_type == "matrix":
+        message = (
+            f"You've used all {limit} Comparison Matrix runs this month on your "
+            f"{tier} plan. Your quota resets at the start of next month."
+        )
+    elif limit_type == "verify":
+        message = (
+            f"You've used all {limit} verifications this month on your {tier} plan. "
+            "Your quota resets at the start of next month."
+        )
+    else:
+        message = _quota_message(limit_type, tier)
     return JSONResponse(
         status_code=429,
         content={
             "error": "quota_exceeded",
-            "limit_type": quota["limit_type"],
-            "tier": quota["tier"],
+            "limit_type": limit_type,
+            "tier": tier,
             "resets_at": quota.get("resets_at"),
-            "message": _quota_message(quota["limit_type"], quota["tier"]),
+            "limit": limit,
+            "used": quota.get("used"),
+            "remaining": quota.get("remaining"),
+            "message": message,
         },
     )
 
@@ -218,8 +239,13 @@ async def search(payload: SearchRequest, request: Request):
     # server-side, regardless of what the frontend believes. We peek without
     # incrementing so that a query rejected by validation below doesn't burn one
     # of the user's searches — the real increment happens at the commit step.
+    # Matrix runs draw on their own monthly budget (matrix_runs_used), separate
+    # from the synthesis search count. Matrix is Pro-only and already gated above,
+    # so user_id is guaranteed here for that branch.
     estimated_cost = _estimated_search_cost(tier, output_mode)
-    if user_id:
+    if output_mode == "matrix":
+        quota = await asyncio.to_thread(check_matrix, user_id, tier, commit=False)
+    elif user_id:
         quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost, commit=False)
     else:
         quota = check_anon(ip, commit=False)  # synchronous in-memory
@@ -258,7 +284,9 @@ async def search(payload: SearchRequest, request: Request):
     # ── 5. Quota COMMIT — the query is real, so consume one search now ────────
     # Re-checks the ceilings and increments. The re-check closes the race where a
     # concurrent request consumed the last slot between the peek and here.
-    if user_id:
+    if output_mode == "matrix":
+        quota = await asyncio.to_thread(check_matrix, user_id, tier, commit=True)
+    elif user_id:
         quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost, commit=True)
     else:
         quota = check_anon(ip, commit=True)
@@ -320,14 +348,16 @@ async def search(payload: SearchRequest, request: Request):
             yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})
             return
 
-        # Quota info — lets the frontend update the remaining-searches badge.
+        # Quota info — lets the frontend update the remaining badge. Shapes differ
+        # between the search counter (check_user) and the matrix feature counter,
+        # so fall back to the feature fields for matrix runs.
         yield _sse({
             "type": "quota",
             "tier": quota["tier"],
-            "remaining_daily": quota["remaining_daily"],
-            "limit_daily": quota["limit_daily"],
-            "remaining_monthly": quota.get("remaining_monthly"),
-            "limit_monthly": quota.get("limit_monthly"),
+            "remaining_daily": quota.get("remaining_daily"),
+            "limit_daily": quota.get("limit_daily"),
+            "remaining_monthly": quota.get("remaining_monthly", quota.get("remaining")),
+            "limit_monthly": quota.get("limit_monthly", quota.get("limit")),
         })
         yield _sse({"type": "done"})
 
@@ -336,50 +366,71 @@ async def search(payload: SearchRequest, request: Request):
     )
 
 
-@app.post("/write")
-@limiter.limit("5/minute")
-async def write(payload: WriteRequest, request: Request):
-    """Stream an AI-suggested continuation of a Pro user's lit-review draft.
+@app.post("/verify")
+@limiter.limit("20/minute")
+async def verify(payload: VerifyRequest, request: Request):
+    """Fact-check a highlighted claim against the synthesis + papers (Pro writing mode).
 
-    Pro-only and enforced server-side: a valid Supabase JWT resolving to a
-    pro/lab tier is required before any Anthropic call. Also covered by the
-    5/min/IP slowapi limit. Free/anonymous callers get 401/403 — the frontend's
-    blurred 'Upgrade to write' panel is UX only; this is the real gate.
+    Pro-only, enforced server-side (valid JWT → pro/lab). Draws on the verify
+    monthly budget (verifies_used), NOT the search quota. Uses Haiku. Returns a
+    verdict (accurate | nuanced | unsupported) + a short explanation.
     """
     jwt_token = _extract_jwt(request)
     user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
     if not user_id:
         return JSONResponse(
             status_code=401,
-            content={"error": "unauthorized", "message": "Sign in to use Write with AI."},
+            content={"error": "unauthorized", "message": "Sign in to verify claims."},
         )
 
     tier = await asyncio.to_thread(get_tier, user_id)
     if tier not in ("pro", "lab"):
         return JSONResponse(
             status_code=403,
-            content={"error": "pro_required", "message": "Writing mode is a Pro feature. Upgrade to write."},
+            content={"error": "pro_required", "message": "Verifying claims is a Pro feature."},
         )
 
-    query = (payload.query or "").strip()[:2000]
+    claim = (payload.claim or "").strip()
+    if not claim:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "empty_claim", "message": "Highlight a sentence to verify."},
+        )
+
+    # Verify-budget peek BEFORE the Anthropic call.
+    quota = await asyncio.to_thread(check_verify, user_id, tier, commit=False)
+    if not quota["allowed"]:
+        return _quota_exceeded_response(quota)
+
     synthesis = (payload.synthesis or "")[:8000]
-    draft = (payload.draft or "")[:8000]
+    papers = payload.papers if isinstance(payload.papers, list) else []
 
-    print(f"[write] user={user_id} tier={tier} draft_len={len(draft)}", flush=True)
+    try:
+        result = await asyncio.to_thread(verify_claim, claim[:2000], synthesis, papers)
+    except SynthesisError as e:
+        return JSONResponse(status_code=502, content={"error": "verify_failed", "message": str(e)})
 
-    async def generate():
-        try:
-            async for chunk in write_continuation_stream(query, synthesis, draft, tier):
-                yield _sse({"type": "text", "text": chunk})
-        except SynthesisError as e:
-            yield _sse({"type": "error", "detail": str(e)})
-            return
-        except Exception as e:
-            yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})
-            return
-        yield _sse({"type": "done"})
+    # Consume one verify only after a successful check.
+    committed = await asyncio.to_thread(check_verify, user_id, tier, commit=True)
+    print(f"[verify] user={user_id} tier={tier} verdict={result['verdict']}", flush=True)
 
-    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
+    return {
+        "verdict": result["verdict"],
+        "explanation": result["explanation"],
+        "remaining": committed.get("remaining"),
+        "limit": committed.get("limit"),
+    }
+
+
+@app.get("/usage")
+async def usage(request: Request):
+    """Return the caller's three monthly quotas (searches, matrix, verifies)."""
+    jwt_token = _extract_jwt(request)
+    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    tier = await asyncio.to_thread(get_tier, user_id)
+    return await asyncio.to_thread(usage_summary, user_id, tier)
 
 
 @app.get("/auth/debug")

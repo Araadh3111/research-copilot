@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearchLoader } from "@/components/research-loader"
 import { SearchHistorySidebar } from "@/components/app/search-history-sidebar"
 import { WritingPanel } from "@/components/app/writing-panel"
+import { UsagePanel } from "@/components/app/usage-panel"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
@@ -70,6 +71,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [showUpgrade, setShowUpgrade] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [historyRefresh, setHistoryRefresh] = useState(0)
+  const [usageRefresh, setUsageRefresh] = useState(0)
   const [waitlistEmail, setWaitlistEmail] = useState("")
   const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "done" | "error">("idle")
   const [waitlistMsg, setWaitlistMsg] = useState<string | null>(null)
@@ -242,8 +244,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           } else if (event.type === "done") {
             setStreaming(false)
             setLoading(false)
-            // A new row was just written server-side — refresh the sidebar.
+            // A new row was just written server-side — refresh the sidebar + usage.
             setHistoryRefresh((n) => n + 1)
+            setUsageRefresh((n) => n + 1)
             break outer
           } else if (event.type === "error") {
             setError((event.detail as string) ?? "An error occurred.")
@@ -347,8 +350,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             <Logo size={30} />
             <span className="font-serif text-xl font-semibold tracking-tight text-ink">Researca</span>
           </a>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {userEmail && <span className="hidden text-sm text-stone-light sm:block">{userEmail}</span>}
+            <UsagePanel refreshKey={usageRefresh} />
             <ThemeToggle />
             <button
               onClick={handleLogout}
@@ -577,12 +581,13 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             <div className="lg:sticky lg:top-20 lg:self-start">
               <WritingPanel
                 isPro={isPro}
-                query={submittedQuery}
                 synthesis={synthesis}
+                papers={papers}
                 draft={draft}
                 setDraft={setDraft}
                 textareaRef={writingRef}
                 onUpgrade={() => setShowUpgrade(true)}
+                onVerified={() => setUsageRefresh((n) => n + 1)}
               />
             </div>
           </div>

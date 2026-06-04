@@ -1,3 +1,4 @@
+import json
 import os
 from typing import AsyncGenerator
 import anthropic
@@ -18,6 +19,9 @@ def _select_model(tier: str) -> str:
         return MODEL_SONNET
     return MODEL_SONNET if tier in ("pro", "lab") else MODEL_HAIKU
 
+
+# Verify always uses Haiku (cheap, fast) regardless of tier — a single short call.
+_verify_client = anthropic.Anthropic(timeout=20.0)
 
 
 class SynthesisError(Exception):
@@ -189,52 +193,60 @@ async def synthesize_stream(
         yield f"\n\n## Sources\n{sources}"
 
 
-async def write_continuation_stream(
-    query: str, synthesis: str, draft: str, tier: str = "pro"
-) -> AsyncGenerator[str, None]:
-    """Stream a suggested continuation of the user's lit-review draft (Pro writing mode).
+def verify_claim(claim: str, synthesis: str, papers: list) -> dict:
+    """Fact-check a drafted claim against the synthesis + papers using Haiku.
 
-    Grounds the continuation in the provided synthesis so it never invents facts or
-    citations. Raises SynthesisError on API failure so the caller emits an SSE error.
+    Returns {"verdict": "accurate"|"nuanced"|"unsupported", "explanation": str}.
+    Always Haiku (never Sonnet). Raises SynthesisError on API failure.
     """
+    ctx_parts = []
+    for i, p in enumerate(papers[:12]):
+        title = (p.get("title") or "Untitled").strip()
+        abstract = (p.get("abstract") or "")[:600]
+        year = p.get("year", "N/A")
+        ctx_parts.append(f"[{i+1}] {title} ({year})\n{abstract}")
+    papers_ctx = "\n\n".join(ctx_parts) or "(no papers provided)"
+
     system = (
-        "You are a research writing assistant helping a researcher draft a literature "
-        "review section. Continue their draft in the same voice, tense and register, "
-        "grounded ONLY in the provided synthesis — never invent findings, numbers, or "
-        "citations that aren't in it. Be concise and academic. Output ONLY the "
-        "continuation prose: no preamble, no headings, no meta commentary, no quotes "
-        "around it."
+        "You are a fact-checking assistant for academic literature reviews. Given a "
+        "claim a writer has drafted and the research it is supposedly based on, judge "
+        "whether the claim accurately reflects that research. Verdicts: 'accurate' = "
+        "well supported; 'nuanced' = partially supported, oversimplified, or needs "
+        "qualification; 'unsupported' = not supported by, or contradicts, the provided "
+        "research. Reply with ONLY JSON, no prose, no code fences: "
+        '{"verdict": "accurate"|"nuanced"|"unsupported", "explanation": "<= 30 words"}'
     )
-    user = f"""Research topic: "{query}"
-
-Synthesis of the literature (your only source of truth):
-{synthesis or "(no synthesis provided)"}
-
-The researcher's draft so far:
-\"\"\"
-{draft}
-\"\"\"
-
-Continue the draft from exactly where it leaves off — 1–3 sentences that flow
-naturally from the final sentence. If the draft is empty, write a strong opening
-sentence for the section. Do not repeat text already in the draft."""
-
-    model = _select_model(tier)
-    client = anthropic.AsyncAnthropic(timeout=30.0)
+    user = (
+        f'Claim: "{claim}"\n\n'
+        f"Research synthesis:\n{synthesis or '(none provided)'}\n\n"
+        f"Source papers:\n{papers_ctx}\n\n"
+        "Does this claim accurately reflect the research? Flag any inaccuracies or "
+        "overclaims based on these papers."
+    )
 
     try:
-        async with client.messages.stream(
-            model=model,
-            max_tokens=600,
+        msg = _verify_client.messages.create(
+            model=MODEL_HAIKU,
+            max_tokens=200,
+            temperature=0,
             system=system,
             messages=[{"role": "user", "content": user}],
-        ) as stream:
-            async for text in stream.text_stream:
-                yield text
+        )
+        text = msg.content[0].text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text)
+        verdict = str(data.get("verdict", "")).lower().strip()
+        if verdict not in ("accurate", "nuanced", "unsupported"):
+            verdict = "nuanced"
+        explanation = str(data.get("explanation", "")).strip() or "No explanation provided."
+        return {"verdict": verdict, "explanation": explanation}
     except anthropic.APIError as e:
         raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
     except Exception as e:
-        raise SynthesisError(f"Write failed: {type(e).__name__}: {e}") from e
+        raise SynthesisError(f"Verify failed: {type(e).__name__}: {e}") from e
 
 
 def synthesize(query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free") -> str:

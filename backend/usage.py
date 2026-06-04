@@ -52,14 +52,18 @@ def _jwks_client_for(issuer: str) -> jwt.PyJWKClient | None:
 # anonymous.daily = lifetime total (in-memory, clears on restart, no monthly).
 # cost_monthly = hard USD ceiling per calendar month (None = no cost cap).
 # daily = None means no daily cap (only the monthly limit binds).
+# monthly         = synthesis searches / month (the daily_count column).
+# matrix_monthly  = Comparison Matrix runs / month (matrix_runs_used column).
+# verify_monthly  = "Verify" claim checks / month (verifies_used column).
+# 0 on a feature = not available to that tier (Matrix/Verify are Pro-only).
 LIMITS: dict[str, dict] = {
-    "anonymous": {"daily": 2,    "monthly": None, "cost_monthly": None},
+    "anonymous": {"daily": 2,    "monthly": None, "cost_monthly": None,  "matrix_monthly": 0,  "verify_monthly": 0},
     # Free = 10 searches / month, matching the "10 searches / month" UI copy.
     # daily is None so the *monthly* cap binds first and the 429 reports the
     # correct "resets next month" — not a misleading "resets tomorrow".
-    "free":      {"daily": None, "monthly": 10,   "cost_monthly": 0.50},
-    "pro":       {"daily": None, "monthly": 200,  "cost_monthly": 8.00},
-    "lab":       {"daily": None, "monthly": 300,  "cost_monthly": 20.00},
+    "free":      {"daily": None, "monthly": 10,   "cost_monthly": 0.50,  "matrix_monthly": 0,  "verify_monthly": 0},
+    "pro":       {"daily": None, "monthly": 120,  "cost_monthly": 8.00,  "matrix_monthly": 30, "verify_monthly": 300},
+    "lab":       {"daily": None, "monthly": 300,  "cost_monthly": 20.00, "matrix_monthly": 60, "verify_monthly": 600},
 }
 
 # ── Per-search cost estimates (USD) ──────────────────────────────────────────
@@ -319,4 +323,130 @@ def _allow(tier: str, limits: dict, used_daily: int, used_monthly: int) -> dict:
         "limit_daily": limits["daily"],
         "remaining_monthly": remaining_monthly,
         "limit_monthly": limits["monthly"],
+    }
+
+
+# ── Per-feature monthly counters (Matrix runs, Verify checks) ─────────────────
+# These live in their own user_usage columns (matrix_runs_used / verifies_used),
+# summed across the calendar month, so each feature has an independent budget
+# tracked separately from the synthesis search count (daily_count).
+
+def _month_start_iso() -> str:
+    return date.today().replace(day=1).isoformat()
+
+
+def _month_resets_iso() -> str:
+    today = date.today()
+    next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
+    return datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
+
+
+def _monthly_sum(user_id: str, column: str) -> int:
+    """Sum one usage column across the current calendar month."""
+    rows = (
+        sb.table("user_usage")
+        .select(column)
+        .eq("user_id", user_id)
+        .gte("date", _month_start_iso())
+        .execute()
+    )
+    return sum((r.get(column) or 0) for r in (rows.data or []))
+
+
+def _feature_allow(tier: str, limit_type: str, used: int, limit) -> dict:
+    return {
+        "allowed": True,
+        "tier": tier,
+        "limit_type": limit_type,
+        "used": used,
+        "limit": limit,
+        "remaining": (None if limit is None else max(limit - used, 0)),
+    }
+
+
+def check_feature_monthly(
+    user_id: str, tier: str, *, column: str, limit_key: str, limit_type: str, commit: bool = True
+) -> dict:
+    """Check (and optionally increment) a per-feature monthly counter.
+
+    Used for Matrix and Verify. limit None = unlimited; limit 0 = unavailable to
+    this tier. Fails open for authenticated users on any Supabase error (Hybrid
+    policy) so an infra hiccup never blocks a paying user.
+    """
+    limits = LIMITS.get(tier, LIMITS["free"])
+    limit = limits.get(limit_key)
+
+    if not sb:
+        return _feature_allow(tier, limit_type, 0, limit)
+
+    try:
+        used = _monthly_sum(user_id, column)
+
+        if limit is not None and used >= limit:
+            return {
+                "allowed": False,
+                "tier": tier,
+                "limit_type": limit_type,
+                "used": used,
+                "limit": limit,
+                "remaining": 0,
+                "resets_at": _month_resets_iso(),
+            }
+
+        if commit:
+            row = (
+                sb.table("user_usage")
+                .select(column)
+                .eq("user_id", user_id)
+                .eq("date", date.today().isoformat())
+                .execute()
+            )
+            today_val = (row.data[0].get(column) or 0) if row.data else 0
+            # Partial upsert: only this column is updated on conflict; daily_count,
+            # cost and the other feature column are left untouched.
+            sb.table("user_usage").upsert(
+                {"user_id": user_id, "date": date.today().isoformat(), column: today_val + 1},
+                on_conflict="user_id,date",
+            ).execute()
+            used += 1
+
+        return _feature_allow(tier, limit_type, used, limit)
+
+    except Exception as e:
+        print(f"[usage] FAIL-OPEN feature={limit_type} user={user_id}: {type(e).__name__}: {e}", flush=True)
+        return _feature_allow(tier, limit_type, 0, limit)
+
+
+def check_matrix(user_id: str, tier: str, *, commit: bool = True) -> dict:
+    return check_feature_monthly(
+        user_id, tier, column="matrix_runs_used", limit_key="matrix_monthly",
+        limit_type="matrix", commit=commit,
+    )
+
+
+def check_verify(user_id: str, tier: str, *, commit: bool = True) -> dict:
+    return check_feature_monthly(
+        user_id, tier, column="verifies_used", limit_key="verify_monthly",
+        limit_type="verify", commit=commit,
+    )
+
+
+def usage_summary(user_id: str, tier: str) -> dict:
+    """Read-only snapshot of all three monthly quotas for the account/usage area."""
+    limits = LIMITS.get(tier, LIMITS["free"])
+
+    def feat(column: str, limit_key: str) -> dict:
+        limit = limits.get(limit_key)
+        try:
+            used = _monthly_sum(user_id, column) if sb else 0
+        except Exception:
+            used = 0
+        return {"used": used, "limit": limit, "remaining": (None if limit is None else max(limit - used, 0))}
+
+    return {
+        "tier": tier,
+        "searches": feat("daily_count", "monthly"),
+        "matrix": feat("matrix_runs_used", "matrix_monthly"),
+        "verifies": feat("verifies_used", "verify_monthly"),
+        "resets_at": _month_resets_iso(),
     }
