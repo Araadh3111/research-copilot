@@ -110,10 +110,12 @@ function Stat({ end, suffix = "", prefix = "", label }: { end: number; suffix?: 
 
   return (
     <div className="text-center">
-      <div className="font-serif text-[34px] font-bold leading-none tracking-tight text-ink sm:text-[42px]">
+      <div className="font-serif text-[28px] font-bold leading-none tracking-tight text-ink sm:text-[42px]">
         <motion.span ref={ref}>{display}</motion.span>
       </div>
-      <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone">{label}</div>
+      <div className="mx-auto mt-2 max-w-[68px] text-[10px] font-semibold uppercase leading-tight tracking-[0.08em] text-stone sm:max-w-none sm:text-[11px] sm:tracking-[0.14em]">
+        {label}
+      </div>
     </div>
   )
 }
@@ -290,7 +292,7 @@ export function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, delay: 1.4, ease: EASE }}
-            className="mt-14 flex items-center justify-center gap-10 sm:gap-16"
+            className="mt-14 flex items-center justify-center gap-5 sm:gap-16"
           >
             <Stat end={20} suffix="+" label="Papers / search" />
             <span aria-hidden className="h-10 w-px bg-line-strong" />
