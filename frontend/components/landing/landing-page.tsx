@@ -22,19 +22,19 @@ const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
 // Section content: fade + slide up when it scrolls into view (once).
 const reveal: Variants = {
   hidden: { opacity: 0, y: 40 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.95, ease: EASE } },
 }
 
 // Plain fade for small supporting text.
 const fadeIn: Variants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { duration: 0.6, ease: EASE } },
+  show: { opacity: 1, transition: { duration: 0.95, ease: EASE } },
 }
 
-// Stagger container: children (which use `reveal`) come in 0.1s apart.
+// Stagger container: children (which use `reveal`) come in 0.16s apart.
 const staggerParent: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.1 } },
+  show: { transition: { staggerChildren: 0.16 } },
 }
 
 const VIEWPORT_ONCE = { once: true, amount: 0.2 } as const
@@ -103,8 +103,8 @@ function Stat({ end, suffix = "", prefix = "", label }: { end: number; suffix?: 
       count.set(end)
       return
     }
-    // easeOutExpo-ish settle for a snappy, premium count.
-    const controls = animate(count, end, { duration: 1.4, ease: [0.16, 1, 0.3, 1] })
+    // easeOutExpo-ish settle for a smooth, premium count.
+    const controls = animate(count, end, { duration: 2.2, ease: [0.16, 1, 0.3, 1] })
     return () => controls.stop()
   }, [inView, end, reduce, count])
 
@@ -128,11 +128,11 @@ function Headline() {
   ]
   let wordIndex = 0
   return (
-    <h1 className="font-serif text-[clamp(31px,8vw,72px)] font-bold leading-[1.05] tracking-[-0.02em] text-ink">
+    <h1 className="font-serif text-[clamp(26px,7vw,72px)] font-bold leading-[1.05] tracking-[-0.02em] text-ink">
       {lines.map((words, li) => (
         <span key={li} className="block">
           {words.map((w, wi) => {
-            const delay = 0.15 + wordIndex * 0.08
+            const delay = 0.2 + wordIndex * 0.13
             wordIndex += 1
             return (
               <Fragment key={wi}>
@@ -140,7 +140,7 @@ function Headline() {
                   className="inline-block"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay, ease: EASE }}
+                  transition={{ duration: 0.75, delay, ease: EASE }}
                 >
                   {w}
                 </motion.span>
@@ -230,9 +230,10 @@ export function LandingPage() {
             </a>
             <a
               href="/auth"
-              className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-cream transition-all hover:bg-ink-soft sm:px-5"
+              className="whitespace-nowrap rounded-full bg-ink px-3.5 py-2 text-sm font-medium text-cream transition-all hover:bg-ink-soft sm:px-5"
             >
-              Start for free
+              <span className="sm:hidden">Start free</span>
+              <span className="hidden sm:inline">Start for free</span>
             </a>
           </div>
         </nav>
@@ -248,7 +249,7 @@ export function LandingPage() {
           <motion.p
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: EASE }}
+            transition={{ duration: 0.8, ease: EASE }}
             className="mb-6 text-[10px] font-semibold uppercase tracking-[0.08em] text-gold sm:text-[12px] sm:tracking-[0.16em]"
           >
             Built by Araadh · Age 15 · Chandigarh, India
@@ -259,7 +260,7 @@ export function LandingPage() {
           <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.6, ease: EASE }}
+            transition={{ duration: 0.9, delay: 1.0, ease: EASE }}
             className="mx-auto mt-7 max-w-[520px] text-[16px] leading-relaxed text-stone sm:text-[20px]"
           >
             Researca reads 20+ academic papers, ranks them by actual relevance, and synthesizes
@@ -269,7 +270,7 @@ export function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.72, ease: EASE }}
+            transition={{ duration: 0.9, delay: 1.2, ease: EASE }}
             className="mt-9 flex flex-col items-center gap-3"
           >
             <Magnetic strength={0.5}>
@@ -288,7 +289,7 @@ export function LandingPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.85, ease: EASE }}
+            transition={{ duration: 0.9, delay: 1.4, ease: EASE }}
             className="mt-14 flex items-center justify-center gap-10 sm:gap-16"
           >
             <Stat end={20} suffix="+" label="Papers / search" />
