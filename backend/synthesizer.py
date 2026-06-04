@@ -189,6 +189,54 @@ async def synthesize_stream(
         yield f"\n\n## Sources\n{sources}"
 
 
+async def write_continuation_stream(
+    query: str, synthesis: str, draft: str, tier: str = "pro"
+) -> AsyncGenerator[str, None]:
+    """Stream a suggested continuation of the user's lit-review draft (Pro writing mode).
+
+    Grounds the continuation in the provided synthesis so it never invents facts or
+    citations. Raises SynthesisError on API failure so the caller emits an SSE error.
+    """
+    system = (
+        "You are a research writing assistant helping a researcher draft a literature "
+        "review section. Continue their draft in the same voice, tense and register, "
+        "grounded ONLY in the provided synthesis — never invent findings, numbers, or "
+        "citations that aren't in it. Be concise and academic. Output ONLY the "
+        "continuation prose: no preamble, no headings, no meta commentary, no quotes "
+        "around it."
+    )
+    user = f"""Research topic: "{query}"
+
+Synthesis of the literature (your only source of truth):
+{synthesis or "(no synthesis provided)"}
+
+The researcher's draft so far:
+\"\"\"
+{draft}
+\"\"\"
+
+Continue the draft from exactly where it leaves off — 1–3 sentences that flow
+naturally from the final sentence. If the draft is empty, write a strong opening
+sentence for the section. Do not repeat text already in the draft."""
+
+    model = _select_model(tier)
+    client = anthropic.AsyncAnthropic(timeout=30.0)
+
+    try:
+        async with client.messages.stream(
+            model=model,
+            max_tokens=600,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
+    except anthropic.APIError as e:
+        raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
+    except Exception as e:
+        raise SynthesisError(f"Write failed: {type(e).__name__}: {e}") from e
+
+
 def synthesize(query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free") -> str:
     """Blocking synthesis used by the __main__ runner only."""
     if not papers:

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download, Share2, Check } from "lucide-react"
+import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download, Share2, Check, Plus } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -69,6 +69,8 @@ type Props = {
   outputMode?: "synthesis" | "matrix"
   /** Show the "Share" button (only in the live app, not on the read-only share page). */
   shareable?: boolean
+  /** When set (Pro writing mode), each paper shows an "Insert citation" button. */
+  onInsertCitation?: (paper: Paper) => void
 }
 
 function numberFmt(n: number): string {
@@ -77,7 +79,7 @@ function numberFmt(n: number): string {
 
 type ShareState = "idle" | "loading" | "copied" | "error"
 
-export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis", shareable = false }: Props) {
+export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis", shareable = false, onInsertCitation }: Props) {
   const hasSynthesis = synthesis.trim().length > 0
   const isMatrix = outputMode === "matrix"
   const gaps = isMatrix ? [] : extractGaps(synthesis)
@@ -300,40 +302,86 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                 .slice(0, 3)
                 .join(", ")
 
+              const titleRow = (
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-mono text-[13px] font-medium leading-snug text-ink">{title}</span>
+                  {paper.url && <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-stone-light" />}
+                </div>
+              )
+
+              const footer = (
+                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone">
+                  {typeof paper.year === "number" && (
+                    <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-body">
+                      {paper.year}
+                    </span>
+                  )}
+                  {typeof paper.citationCount === "number" && (
+                    <span className="inline-flex items-center gap-1">
+                      <Quote className="size-3" />
+                      {numberFmt(paper.citationCount)} citation{paper.citationCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {pdfUrl && (
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-gold transition-colors hover:text-ink"
+                    >
+                      <FileText className="size-3" />
+                      PDF
+                    </a>
+                  )}
+                  {onInsertCitation && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onInsertCitation(paper)
+                      }}
+                      className="ml-auto inline-flex items-center gap-1 rounded-full border border-line bg-cream px-2.5 py-0.5 font-medium text-stone transition-colors hover:border-line-strong hover:text-ink"
+                    >
+                      <Plus className="size-3" />
+                      Insert citation
+                    </button>
+                  )}
+                </div>
+              )
+
               const body = (
                 <>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-mono text-[13px] font-medium leading-snug text-ink">{title}</span>
-                    {paper.url && <ExternalLink className="mt-0.5 size-3.5 shrink-0 text-stone-light" />}
-                  </div>
+                  {titleRow}
                   {authors && <p className="mt-1.5 truncate text-xs text-stone">{authors}</p>}
-                  <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone">
-                    {typeof paper.year === "number" && (
-                      <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-body">
-                        {paper.year}
-                      </span>
-                    )}
-                    {typeof paper.citationCount === "number" && (
-                      <span className="inline-flex items-center gap-1">
-                        <Quote className="size-3" />
-                        {numberFmt(paper.citationCount)} citation{paper.citationCount === 1 ? "" : "s"}
-                      </span>
-                    )}
-                    {pdfUrl && (
-                      <a
-                        href={pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 text-gold transition-colors hover:text-ink"
-                      >
-                        <FileText className="size-3" />
-                        PDF
-                      </a>
-                    )}
-                  </div>
+                  {footer}
                 </>
               )
+
+              // Writing mode: the card holds a button, so it can't be wrapped in an
+              // <a> (no nested interactive elements) — make the title the link and
+              // render the card as a plain div.
+              if (onInsertCitation) {
+                return (
+                  <div key={paper.paperId ?? i} className="rounded-xl border border-line bg-paper/50 p-4">
+                    {paper.url ? (
+                      <a
+                        href={paper.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block transition-opacity hover:opacity-80"
+                      >
+                        {titleRow}
+                      </a>
+                    ) : (
+                      titleRow
+                    )}
+                    {authors && <p className="mt-1.5 truncate text-xs text-stone">{authors}</p>}
+                    {footer}
+                  </div>
+                )
+              }
 
               return paper.url ? (
                 <a

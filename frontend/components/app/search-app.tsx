@@ -1,13 +1,14 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X } from "lucide-react"
+import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X, PenLine } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearchLoader } from "@/components/research-loader"
 import { SearchHistorySidebar } from "@/components/app/search-history-sidebar"
+import { WritingPanel } from "@/components/app/writing-panel"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
@@ -59,7 +60,45 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "done" | "error">("idle")
   const [waitlistMsg, setWaitlistMsg] = useState<string | null>(null)
 
+  // ── Pro split-panel writing mode ────────────────────────────────────────────
+  const [writingMode, setWritingMode] = useState(false)
+  const [draft, setDraft] = useState("")
+  const writingRef = useRef<HTMLTextAreaElement | null>(null)
+
   const isPro = tier === "pro" || tier === "lab"
+
+  // Format a paper as an inline parenthetical citation, e.g. "(Doudna et al., 2023)".
+  function formatCitation(paper: Paper): string {
+    const names = (paper.authors ?? []).map((a) => a?.name?.trim()).filter((n): n is string => !!n)
+    const firstLast = names[0]?.split(/\s+/).pop()
+    const who = firstLast
+      ? names.length > 1
+        ? `${firstLast} et al.`
+        : firstLast
+      : (paper.title?.trim().split(/\s+/).slice(0, 3).join(" ") || "Source")
+    const year = typeof paper.year === "number" ? paper.year : "n.d."
+    return `(${who}, ${year})`
+  }
+
+  // Insert a paper's citation at the caret in the writing panel (Pro only).
+  function insertCitation(paper: Paper) {
+    const citation = formatCitation(paper)
+    const el = writingRef.current
+    setDraft((prev) => {
+      if (!el) return prev + (prev.length && !/\s$/.test(prev) ? " " : "") + citation
+      const start = el.selectionStart ?? prev.length
+      const end = el.selectionEnd ?? prev.length
+      const lead = start > 0 && !/\s/.test(prev[start - 1]) ? " " : ""
+      const text = lead + citation
+      const next = prev.slice(0, start) + text + prev.slice(end)
+      const pos = start + text.length
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(pos, pos)
+      })
+      return next
+    })
+  }
 
   // Confirm the tier from the backend (service-role read — authoritative) so the
   // Matrix gate reflects reality even if the server-side profile read was blocked.
@@ -312,7 +351,11 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
       </header>
 
       {/* Search area */}
-      <section className="mx-auto flex max-w-3xl flex-col items-center px-6 pt-[12vh] text-center">
+      <section
+        className={`mx-auto flex w-full flex-col items-center px-6 pt-[12vh] text-center transition-[max-width] duration-300 ${
+          writingMode ? "max-w-6xl" : "max-w-3xl"
+        }`}
+      >
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink">
           What are you researching?
         </h1>
@@ -422,49 +465,67 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </div>
         )}
 
-        {/* Synthesis / Matrix toggle */}
+        {/* Synthesis / Matrix toggle + Writing mode */}
         {hasResults && (
-          <div className="mt-6 inline-flex rounded-full border border-line bg-cream p-1">
-            <button
-              type="button"
-              onClick={() => handleModeToggle("synthesis")}
-              disabled={loading}
-              className={`rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
-                outputMode === "synthesis" ? "bg-ink text-cream" : "text-stone hover:text-ink"
-              }`}
-            >
-              Synthesis
-            </button>
-            <div className="group relative">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <div className="inline-flex rounded-full border border-line bg-cream p-1">
               <button
                 type="button"
-                onClick={() => handleModeToggle("matrix")}
+                onClick={() => handleModeToggle("synthesis")}
                 disabled={loading}
-                aria-disabled={!isPro}
-                className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
-                  !isPro
-                    ? "text-stone-light"
-                    : outputMode === "matrix"
-                      ? "bg-ink text-cream"
-                      : "text-stone hover:text-ink"
+                className={`rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                  outputMode === "synthesis" ? "bg-ink text-cream" : "text-stone hover:text-ink"
                 }`}
               >
-                Matrix
-                {!isPro && <Lock className="size-3" />}
+                Synthesis
               </button>
-              {!isPro && (
-                <span className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-cream opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100">
-                  Pro feature — upgrade to unlock
-                </span>
-              )}
+              <div className="group relative">
+                <button
+                  type="button"
+                  onClick={() => handleModeToggle("matrix")}
+                  disabled={loading}
+                  aria-disabled={!isPro}
+                  className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                    !isPro
+                      ? "text-stone-light"
+                      : outputMode === "matrix"
+                        ? "bg-ink text-cream"
+                        : "text-stone hover:text-ink"
+                  }`}
+                >
+                  Matrix
+                  {!isPro && <Lock className="size-3" />}
+                </button>
+                {!isPro && (
+                  <span className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-cream opacity-0 shadow-sm transition-opacity duration-150 group-hover:opacity-100">
+                    Pro feature — upgrade to unlock
+                  </span>
+                )}
+              </div>
             </div>
+
+            {/* Writing mode toggle — available to all; right panel is Pro-gated inside. */}
+            <button
+              type="button"
+              onClick={() => setWritingMode((w) => !w)}
+              aria-pressed={writingMode}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 font-serif text-sm font-medium transition-colors ${
+                writingMode
+                  ? "border-ink bg-ink text-cream"
+                  : "border-line bg-cream text-stone hover:border-line-strong hover:text-ink"
+              }`}
+            >
+              <PenLine className="size-3.5" />
+              {writingMode ? "Exit writing" : "Write"}
+              {!isPro && !writingMode && <Lock className="size-3" />}
+            </button>
           </div>
         )}
 
         {/* Cinematic staged loader — only in the gap before results stream in. */}
         {loading && !hasResults && <ResearchLoader />}
 
-        {hasResults && (
+        {hasResults && !writingMode && (
           <SearchResults
             query={submittedQuery}
             papers={papers}
@@ -473,6 +534,34 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             outputMode={outputMode}
             shareable
           />
+        )}
+
+        {/* Split-panel writing mode: results on the left, draft on the right. */}
+        {hasResults && writingMode && (
+          <div className="mt-8 grid w-full grid-cols-1 gap-6 text-left lg:grid-cols-2">
+            <div className="min-w-0">
+              <SearchResults
+                query={submittedQuery}
+                papers={papers}
+                synthesis={synthesis}
+                streaming={streaming}
+                outputMode={outputMode}
+                shareable
+                onInsertCitation={isPro ? insertCitation : undefined}
+              />
+            </div>
+            <div className="lg:sticky lg:top-20 lg:self-start">
+              <WritingPanel
+                isPro={isPro}
+                query={submittedQuery}
+                synthesis={synthesis}
+                draft={draft}
+                setDraft={setDraft}
+                textareaRef={writingRef}
+                onUpgrade={() => setShowUpgrade(true)}
+              />
+            </div>
+          </div>
         )}
 
         <div className="h-24" />

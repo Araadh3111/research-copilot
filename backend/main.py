@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from query_processor import process_query, validate_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
 from ranker import rank
-from synthesizer import synthesize_stream, SynthesisError
+from synthesizer import synthesize_stream, write_continuation_stream, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
 from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, record_search
 from synthesizer import FORCE_SONNET
@@ -84,6 +84,12 @@ class ShareRequest(BaseModel):
     papers: list = []
     synthesis: str = ""
     output_mode: str = "synthesis"
+
+
+class WriteRequest(BaseModel):
+    query: str = ""
+    synthesis: str = ""
+    draft: str = ""
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -328,6 +334,52 @@ async def search(payload: SearchRequest, request: Request):
     return StreamingResponse(
         generate(), media_type="text/event-stream", headers=_SSE_HEADERS
     )
+
+
+@app.post("/write")
+@limiter.limit("5/minute")
+async def write(payload: WriteRequest, request: Request):
+    """Stream an AI-suggested continuation of a Pro user's lit-review draft.
+
+    Pro-only and enforced server-side: a valid Supabase JWT resolving to a
+    pro/lab tier is required before any Anthropic call. Also covered by the
+    5/min/IP slowapi limit. Free/anonymous callers get 401/403 — the frontend's
+    blurred 'Upgrade to write' panel is UX only; this is the real gate.
+    """
+    jwt_token = _extract_jwt(request)
+    user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "unauthorized", "message": "Sign in to use Write with AI."},
+        )
+
+    tier = await asyncio.to_thread(get_tier, user_id)
+    if tier not in ("pro", "lab"):
+        return JSONResponse(
+            status_code=403,
+            content={"error": "pro_required", "message": "Writing mode is a Pro feature. Upgrade to write."},
+        )
+
+    query = (payload.query or "").strip()[:2000]
+    synthesis = (payload.synthesis or "")[:8000]
+    draft = (payload.draft or "")[:8000]
+
+    print(f"[write] user={user_id} tier={tier} draft_len={len(draft)}", flush=True)
+
+    async def generate():
+        try:
+            async for chunk in write_continuation_stream(query, synthesis, draft, tier):
+                yield _sse({"type": "text", "text": chunk})
+        except SynthesisError as e:
+            yield _sse({"type": "error", "detail": str(e)})
+            return
+        except Exception as e:
+            yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})
+            return
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(generate(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @app.get("/auth/debug")
