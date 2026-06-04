@@ -2,13 +2,14 @@ import asyncio
 import json
 import os
 import re
-import time
-from collections import defaultdict, deque
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 
 from query_processor import process_query, validate_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
@@ -19,7 +20,39 @@ from usage import check_anon, verify_jwt, get_tier, check_user, SEARCH_COST, rec
 from synthesizer import FORCE_SONNET
 from supabase_client import sb
 
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# ── IP-based rate limiting (slowapi) ──────────────────────────────────────────
+# Second layer on top of the per-user tier limits: caps raw request volume per
+# IP so the synthesis endpoint can't be spammed even by traffic that bypasses
+# auth. Keyed by the real client IP (x-forwarded-for first, since Railway runs
+# behind a proxy) rather than slowapi's default so the proxy IP isn't shared by
+# every caller.
+limiter = Limiter(key_func=_client_ip)
+
 app = FastAPI(title="Researca Core OS Engine API")
+app.state.limiter = limiter
+
+
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "rate_limited",
+            "detail": (
+                f"Too many requests (limit {exc.detail} per IP). "
+                "Please wait a moment and try again."
+            ),
+        },
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -46,36 +79,20 @@ class WaitlistRequest(BaseModel):
     email: str
 
 
+class ShareRequest(BaseModel):
+    query: str
+    papers: list = []
+    synthesis: str = ""
+    output_mode: str = "synthesis"
+
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-
-RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "10"))
-RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
-
-_request_log: dict[str, deque] = defaultdict(deque)
 
 _SSE_HEADERS = {
     "Cache-Control": "no-cache",
     "X-Accel-Buffering": "no",
 }
-
-
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _is_rate_limited(ip: str) -> bool:
-    now = time.time()
-    timestamps = _request_log[ip]
-    while timestamps and timestamps[0] <= now - RATE_LIMIT_WINDOW:
-        timestamps.popleft()
-    if len(timestamps) >= RATE_LIMIT_MAX:
-        return True
-    timestamps.append(now)
-    return False
 
 
 def _extract_jwt(request: Request) -> str | None:
@@ -113,6 +130,19 @@ def _estimated_search_cost(tier: str, output_mode: str) -> float:
     return base + (SEARCH_COST["matrix_surcharge"] if output_mode == "matrix" else 0.0)
 
 
+def _quota_exceeded_response(quota: dict) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "quota_exceeded",
+            "limit_type": quota["limit_type"],
+            "tier": quota["tier"],
+            "resets_at": quota.get("resets_at"),
+            "message": _quota_message(quota["limit_type"], quota["tier"]),
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
@@ -122,39 +152,33 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 @app.post("/search")
-async def search(request: SearchRequest, http_request: Request):
-    # ── 1. IP-level rate limit (burst guard) ─────────────────────────────────
-    ip = _client_ip(http_request)
-    if _is_rate_limited(ip):
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": "rate_limited",
-                "detail": (
-                    f"Too many requests. Limit is {RATE_LIMIT_MAX} per "
-                    f"{RATE_LIMIT_WINDOW}s. Please wait and try again."
-                ),
-            },
-        )
+@limiter.limit("5/minute")
+async def search(payload: SearchRequest, request: Request):
+    # IP-level rate limiting (5/min/IP) is enforced by the @limiter.limit
+    # decorator above — it rejects with a 429 (via _rate_limit_handler) before
+    # this body runs. This is the second layer, on top of the per-user tier
+    # limits checked below, so the endpoint can't be spammed even without auth.
+    ip = _client_ip(request)
 
-    raw_query = (request.query or "").strip()
+    raw_query = (payload.query or "").strip()
     if not raw_query:
         return JSONResponse(
             status_code=400,
             content={"error": "empty_query", "detail": "Query must not be empty."},
         )
 
-    level = request.level
-    output_mode = request.output_mode if request.output_mode in ("synthesis", "matrix") else "synthesis"
+    level = payload.level
+    output_mode = payload.output_mode if payload.output_mode in ("synthesis", "matrix") else "synthesis"
     query_norm = normalize(raw_query)
 
     # Resolve the caller's identity up front so both cache hits and full
     # searches can be appended to their search history.
-    jwt_token = _extract_jwt(http_request)
+    jwt_token = _extract_jwt(request)
     user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
 
-    # ── 2. Cache check (before quota — cache hits are instant and free) ───────
-    # Matrix results are not cached — they're lightweight and always fresh.
+    # ── 1. Cache check (before quota — cache hits are instant and free) ───────
+    # Cache hits replay stored text and never call Anthropic, so they don't
+    # consume a search. Matrix results are not cached — always fresh.
     cached = await asyncio.to_thread(get_cached, query_norm, level) if output_mode == "synthesis" else None
     if cached:
         async def stream_from_cache():
@@ -169,24 +193,7 @@ async def search(request: SearchRequest, http_request: Request):
             stream_from_cache(), media_type="text/event-stream", headers=_SSE_HEADERS
         )
 
-    # ── 2.5 Query validation (cache misses only — cached queries were valid) ──
-    # A fast Haiku classification weeds out greetings, gibberish and non-research
-    # input before we spend any quota or run the full pipeline. Runs BEFORE the
-    # quota check so an invalid query never consumes a search. Fails open inside
-    # validate_query, so a model hiccup never blocks a real search.
-    if not await asyncio.to_thread(validate_query, raw_query):
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": "invalid_query",
-                "message": (
-                    "Please enter a research topic. "
-                    "Try: 'CRISPR gene editing' or 'prosthetic arm control'"
-                ),
-            },
-        )
-
-    # ── 3. Quota check ────────────────────────────────────────────────────────
+    # ── 2. Resolve tier + gate Pro-only features ──────────────────────────────
     tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
 
     # Comparison Matrix is a Pro feature — gate before consuming any quota.
@@ -199,11 +206,17 @@ async def search(request: SearchRequest, http_request: Request):
             },
         )
 
+    # ── 3. Quota PEEK — enforce the tier limit BEFORE any Anthropic call ──────
+    # Every downstream step (query validation, processing, ranking, synthesis)
+    # calls Anthropic, so the per-user limit is enforced HERE first, entirely
+    # server-side, regardless of what the frontend believes. We peek without
+    # incrementing so that a query rejected by validation below doesn't burn one
+    # of the user's searches — the real increment happens at the commit step.
+    estimated_cost = _estimated_search_cost(tier, output_mode)
     if user_id:
-        estimated_cost = _estimated_search_cost(tier, output_mode)
-        quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost)
+        quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost, commit=False)
     else:
-        quota = check_anon(ip)  # synchronous in-memory
+        quota = check_anon(ip, commit=False)  # synchronous in-memory
 
     # One clean line per request so Railway logs show the resolved identity.
     #   jwt=no          → frontend not sending the Authorization header
@@ -217,18 +230,37 @@ async def search(request: SearchRequest, http_request: Request):
     )
 
     if not quota["allowed"]:
+        return _quota_exceeded_response(quota)
+
+    # ── 4. Query validation (Anthropic Haiku) — after the gate, before commit ─
+    # A fast classification weeds out greetings, gibberish and non-research input.
+    # It runs AFTER the peek (so an over-limit caller never reaches Anthropic) but
+    # BEFORE the commit (so a rejected query doesn't consume a search). Fails open
+    # inside validate_query, so a model hiccup never blocks a real search.
+    if not await asyncio.to_thread(validate_query, raw_query):
         return JSONResponse(
-            status_code=429,
+            status_code=400,
             content={
-                "error": "quota_exceeded",
-                "limit_type": quota["limit_type"],
-                "tier": quota["tier"],
-                "resets_at": quota.get("resets_at"),
-                "message": _quota_message(quota["limit_type"], quota["tier"]),
+                "error": "invalid_query",
+                "message": (
+                    "Please enter a research topic. "
+                    "Try: 'CRISPR gene editing' or 'prosthetic arm control'"
+                ),
             },
         )
 
-    # ── 4. Full pipeline (cache miss) ─────────────────────────────────────────
+    # ── 5. Quota COMMIT — the query is real, so consume one search now ────────
+    # Re-checks the ceilings and increments. The re-check closes the race where a
+    # concurrent request consumed the last slot between the peek and here.
+    if user_id:
+        quota = await asyncio.to_thread(check_user, user_id, tier, estimated_cost, commit=True)
+    else:
+        quota = check_anon(ip, commit=True)
+
+    if not quota["allowed"]:
+        return _quota_exceeded_response(quota)
+
+    # ── 6. Full pipeline (cache miss) ─────────────────────────────────────────
     async def generate():
         synthesis_parts: list[str] = []
 
@@ -353,6 +385,87 @@ async def waitlist(req: WaitlistRequest):
         )
     print(f"[waitlist] added {email!r}", flush=True)
     return {"ok": True}
+
+
+# Bounds so a share insert can't be used to stuff huge blobs into the table.
+_SHARE_MAX_PAPERS = 50
+_SHARE_MAX_SYNTHESIS = 60_000
+_SHARE_MAX_QUERY = 2_000
+
+
+@app.post("/share")
+async def create_share(req: ShareRequest):
+    """Persist a synthesis result and return a UUID token for a read-only link.
+
+    Stores the full result (query, papers, synthesis, output_mode) with the
+    service-role client. The token is the public handle used by GET /share/{token}
+    and the frontend /share/[token] page — no auth required to create or view, so
+    anyone can share a result they're looking at.
+    """
+    query = (req.query or "").strip()
+    if not query:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "empty_query", "message": "Nothing to share — run a search first."},
+        )
+    if not sb:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "unavailable", "message": "Sharing is temporarily unavailable."},
+        )
+
+    output_mode = req.output_mode if req.output_mode in ("synthesis", "matrix") else "synthesis"
+    papers = req.papers[:_SHARE_MAX_PAPERS] if isinstance(req.papers, list) else []
+    synthesis = (req.synthesis or "")[:_SHARE_MAX_SYNTHESIS]
+    token = str(uuid.uuid4())
+
+    try:
+        await asyncio.to_thread(
+            lambda: sb.table("shared_results").insert({
+                "token": token,
+                "query": query[:_SHARE_MAX_QUERY],
+                "papers": papers,
+                "synthesis": synthesis,
+                "output_mode": output_mode,
+            }).execute()
+        )
+    except Exception as e:
+        print(f"[share] insert failed: {type(e).__name__}: {e}", flush=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "save_failed", "message": "Couldn't create a share link. Please try again."},
+        )
+    print(f"[share] created token={token}", flush=True)
+    return {"token": token}
+
+
+@app.get("/share/{token}")
+async def get_share(token: str):
+    """Return a stored shared result by token (public, read-only). 404 if unknown."""
+    # Reject anything that isn't a UUID before touching the DB.
+    try:
+        uuid.UUID(token)
+    except (ValueError, AttributeError):
+        return JSONResponse(status_code=404, content={"error": "not_found"})
+    if not sb:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "unavailable", "message": "Sharing is temporarily unavailable."},
+        )
+    try:
+        result = await asyncio.to_thread(
+            lambda: sb.table("shared_results")
+            .select("query, papers, synthesis, output_mode, created_at")
+            .eq("token", token)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        print(f"[share] read failed token={token}: {type(e).__name__}: {e}", flush=True)
+        return JSONResponse(status_code=500, content={"error": "read_failed"})
+    if not result.data:
+        return JSONResponse(status_code=404, content={"error": "not_found"})
+    return result.data[0]
 
 
 @app.get("/")

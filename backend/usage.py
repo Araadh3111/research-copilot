@@ -77,8 +77,14 @@ SEARCH_COST = {
 _anon_counts: dict[str, int] = defaultdict(int)
 
 
-def check_anon(ip: str) -> dict:
-    """Check and increment anonymous IP usage. Returns quota info dict."""
+def check_anon(ip: str, *, commit: bool = True) -> dict:
+    """Check anonymous IP usage (lifetime total). Returns a quota info dict.
+
+    ``commit=False`` peeks without consuming a search — used to enforce the limit
+    *before* any Anthropic call. ``commit=True`` increments the count. Anonymous
+    tracking is purely in-memory (no Supabase), so it never fails open: an
+    over-limit anonymous caller is always blocked.
+    """
     limit = LIMITS["anonymous"]["daily"]
     count = _anon_counts[ip]
 
@@ -90,11 +96,14 @@ def check_anon(ip: str) -> dict:
             "resets_at": None,
         }
 
-    _anon_counts[ip] += 1
+    if commit:
+        _anon_counts[ip] += 1
+        count += 1
+
     return {
         "allowed": True,
         "tier": "anonymous",
-        "remaining_daily": limit - count - 1,
+        "remaining_daily": limit - count,
         "limit_daily": limit,
         "remaining_monthly": None,
         "limit_monthly": None,
@@ -194,12 +203,18 @@ def get_tier(user_id: str) -> str:
         return "free"
 
 
-def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
-    """Check and increment usage for an authenticated user.
+def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: bool = True) -> dict:
+    """Check usage for an authenticated user against their tier ceilings.
 
     Checks daily search count, monthly search count, and monthly cost ceiling.
-    Upserts the daily row (count + cost) on success.
-    Fails open on any Supabase error so users are never blocked by infra issues.
+    With ``commit=True`` (default) it upserts the daily row (count + cost) when the
+    request is allowed. With ``commit=False`` it only peeks — no increment — so the
+    caller can enforce the limit *before* spending anything on Anthropic, then
+    commit once the request is confirmed valid.
+
+    Fails open on any Supabase error so authenticated users are never blocked by an
+    infra hiccup (the Hybrid policy: logged-in users fail open here; anonymous
+    callers are tracked in-memory in check_anon and can't fail open).
     """
     limits = LIMITS.get(tier, LIMITS["free"])
 
@@ -263,6 +278,10 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0) -> dict:
         if cost_ceiling and monthly_cost >= cost_ceiling:
             print(f"[usage] BLOCK cost user={user_id} ${monthly_cost:.3f}>=${cost_ceiling}", flush=True)
             return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": month_resets}
+
+        # Within all ceilings. On a peek, report current usage without consuming.
+        if not commit:
+            return _allow(tier, limits, daily_count, monthly_count)
 
         # ── Increment count + cost ────────────────────────────────────────────
         sb.table("user_usage").upsert(

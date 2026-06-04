@@ -471,6 +471,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             synthesis={synthesis}
             streaming={streaming}
             outputMode={outputMode}
+            shareable
           />
         )}
 
@@ -505,7 +506,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               Unlock Comparison Matrix
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-stone">
-              Pro users get Matrix + CSV export + BibTeX + 30 searches/day.
+              Pro users get Matrix + CSV export + BibTeX + 200 searches/month.
             </p>
             <p className="mt-3 text-sm font-medium text-ink">
               $29/month <span className="font-normal text-stone">— coming soon</span>

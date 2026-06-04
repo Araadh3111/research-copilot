@@ -1,12 +1,13 @@
 "use client"
 
-import type { ReactNode } from "react"
-import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download, Share2, Check } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
 import { RandomLoader } from "@/components/loaders"
 import { papersToBibtex, papersToCsv, downloadFile } from "@/lib/export"
+import { API_BASE_URL } from "@/lib/api"
 
 export type Paper = {
   paperId?: string
@@ -66,16 +67,58 @@ type Props = {
   synthesis: string
   streaming: boolean
   outputMode?: "synthesis" | "matrix"
+  /** Show the "Share" button (only in the live app, not on the read-only share page). */
+  shareable?: boolean
 }
 
 function numberFmt(n: number): string {
   return new Intl.NumberFormat("en-US").format(n)
 }
 
-export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis" }: Props) {
+type ShareState = "idle" | "loading" | "copied" | "error"
+
+export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis", shareable = false }: Props) {
   const hasSynthesis = synthesis.trim().length > 0
   const isMatrix = outputMode === "matrix"
   const gaps = isMatrix ? [] : extractGaps(synthesis)
+
+  const [shareState, setShareState] = useState<ShareState>("idle")
+
+  async function handleShare() {
+    if (shareState === "loading") return
+    setShareState("loading")
+    try {
+      const res = await fetch(`${API_BASE_URL}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, papers, synthesis, output_mode: outputMode }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.token) throw new Error("share failed")
+
+      const url = `${window.location.origin}/share/${data.token}`
+      try {
+        await navigator.clipboard.writeText(url)
+      } catch {
+        // Clipboard blocked (e.g. insecure context) — surface the link instead.
+        window.prompt("Copy your share link:", url)
+      }
+      setShareState("copied")
+      setTimeout(() => setShareState("idle"), 2500)
+    } catch {
+      setShareState("error")
+      setTimeout(() => setShareState("idle"), 2500)
+    }
+  }
+
+  const shareLabel =
+    shareState === "copied"
+      ? "Link copied!"
+      : shareState === "error"
+        ? "Try again"
+        : shareState === "loading"
+          ? "Creating…"
+          : "Share"
 
   return (
     <div className="mt-8 w-full max-w-3xl space-y-5 text-left">
@@ -202,6 +245,17 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
       {/* Export toolbar — generated entirely client-side, zero API cost. */}
       {papers.length > 0 && !streaming && (
         <div className="flex flex-wrap items-center gap-2 px-1">
+          {shareable && (
+            <button
+              type="button"
+              onClick={handleShare}
+              disabled={shareState === "loading"}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-cream px-4 py-1.5 text-sm font-medium text-stone transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {shareState === "copied" ? <Check className="size-3.5 text-gold" /> : <Share2 className="size-3.5" />}
+              {shareLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>

@@ -8,3 +8,4 @@ pydantic==2.13.4
 starlette==0.38.6
 supabase>=2.15.0
 PyJWT[crypto]>=2.8.0
+slowapi>=0.1.9
