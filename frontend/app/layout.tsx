@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Roboto, Montserrat, PT_Mono } from 'next/font/google'
+import { Roboto, Montserrat, PT_Mono, Playfair_Display, Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
@@ -24,6 +24,20 @@ const ptMono = PT_Mono({
   variable: '--font-pt-mono',
   display: 'swap',
 })
+// Playfair Display — high-contrast display serif for the "Living Manuscript"
+// landing hero. Variable font, so the full weight range is available.
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  variable: '--font-playfair',
+  display: 'swap',
+})
+// Inter — clean grotesque for the landing subheadline / supporting copy, paired
+// against the Playfair display serif. Variable font, full weight range.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Researca — Literature review in 30 seconds',
@@ -42,7 +56,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${roboto.variable} ${montserrat.variable} ${ptMono.variable}`}
+      className={`${roboto.variable} ${montserrat.variable} ${ptMono.variable} ${playfair.variable} ${inter.variable}`}
       suppressHydrationWarning
     >
       <head>

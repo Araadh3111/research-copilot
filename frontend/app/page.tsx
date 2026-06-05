@@ -1,11 +1,12 @@
 import { createClient } from "@/utils/supabase/server"
-import { LandingPage } from "@/components/landing/landing-page"
+import { ManuscriptLanding } from "@/components/landing/manuscript-landing"
 import { SearchApp } from "@/components/app/search-app"
 
 // Server-enforced routing: the session is read on the server (cookies kept fresh
-// by proxy.ts), so logged-out visitors are served the marketing landing page and
-// logged-in users get the search interface — the wrong UI is never sent to the
-// client, not merely hidden with CSS.
+// by proxy.ts), so logged-out visitors get the "Living Manuscript" landing hero
+// (the galaxy experiment lives at /galaxy, the original marketing page at
+// /classic) and logged-in users get the search interface — the wrong UI is never
+// sent to the client, not merely hidden with CSS.
 export default async function Page() {
   const supabase = await createClient()
   const {
@@ -24,5 +25,5 @@ export default async function Page() {
       <SearchApp userEmail={user.email ?? undefined} initialTier={profile?.tier ?? "free"} />
     )
   }
-  return <LandingPage />
+  return <ManuscriptLanding />
 }
