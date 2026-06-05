@@ -203,6 +203,28 @@ async def search(payload: SearchRequest, request: Request):
     jwt_token = _extract_jwt(request)
     user_id = await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
 
+    # ── 0. Pro gate (Comparison Matrix) — FIRST, before cache or any Anthropic ─
+    # Matrix is a Pro-only feature. We resolve the tier from the verified JWT and
+    # reject free/anonymous callers here, at the very top of the endpoint, before
+    # the cache lookup and before any Anthropic call. Frontend gating is UX only;
+    # this is the real enforcement. tier is resolved here only for matrix so the
+    # common synthesis path keeps its cheap cache hits (no extra DB read).
+    tier: str | None = None
+    if output_mode == "matrix":
+        tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
+        if tier not in ("pro", "lab"):
+            print(
+                f"[search] matrix BLOCK ip={ip} user_id={user_id!r} tier={tier!r}",
+                flush=True,
+            )
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "matrix_gated",
+                    "message": "Comparison Matrix is a Pro feature. Upgrade to unlock it.",
+                },
+            )
+
     # ── 1. Cache check (before quota — cache hits are instant and free) ───────
     # Cache hits replay stored text and never call Anthropic, so they don't
     # consume a search. Matrix results are not cached — always fresh.
@@ -220,18 +242,9 @@ async def search(payload: SearchRequest, request: Request):
             stream_from_cache(), media_type="text/event-stream", headers=_SSE_HEADERS
         )
 
-    # ── 2. Resolve tier + gate Pro-only features ──────────────────────────────
-    tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
-
-    # Comparison Matrix is a Pro feature — gate before consuming any quota.
-    if output_mode == "matrix" and tier not in ("pro", "lab"):
-        return JSONResponse(
-            status_code=403,
-            content={
-                "error": "matrix_gated",
-                "message": "Comparison Matrix is a Pro feature. Upgrade to unlock it.",
-            },
-        )
+    # ── 2. Resolve tier (synthesis path; matrix already resolved + gated above) ─
+    if tier is None:
+        tier = await asyncio.to_thread(get_tier, user_id) if user_id else "anonymous"
 
     # ── 3. Quota PEEK — enforce the tier limit BEFORE any Anthropic call ──────
     # Every downstream step (query validation, processing, ranking, synthesis)

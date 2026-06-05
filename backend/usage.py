@@ -77,6 +77,18 @@ SEARCH_COST = {
     "matrix_surcharge": 0.005,
 }
 
+# Whether the optional user_usage.estimated_cost_usd column exists. Auto-disabled
+# the first time Postgres reports it missing (error 42703) so a not-yet-applied
+# migration (004) can't take down COUNT enforcement. The bug this guards against:
+# selecting/writing a missing column threw on every request, hitting check_user's
+# fail-open except — users were never limited and the usage bar never filled.
+_HAS_COST_COL = True
+
+
+def _missing_cost_column(exc: Exception) -> bool:
+    s = str(exc)
+    return "estimated_cost_usd" in s and ("42703" in s or "does not exist" in s)
+
 # ── Anonymous tracking (in-memory, IP-keyed) ─────────────────────────────────
 _anon_counts: dict[str, int] = defaultdict(int)
 
@@ -226,33 +238,46 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
         return _allow(tier, limits, limits["daily"], limits["monthly"] or 0)
 
     today = date.today()
+    global _HAS_COST_COL
 
     try:
         # ── Daily row (count + today's accumulated cost) ─────────────────────
-        row = (
-            sb.table("user_usage")
-            .select("daily_count, estimated_cost_usd")
-            .eq("user_id", user_id)
-            .eq("date", today.isoformat())
-            .execute()
-        )
+        # daily_count is the primary enforcement signal and always exists; the
+        # cost column is optional (see _HAS_COST_COL). Probe it here and, if it's
+        # missing, permanently fall back to count-only so the request still
+        # enforces the limit instead of crashing into the fail-open path.
+        cols = "daily_count, estimated_cost_usd" if _HAS_COST_COL else "daily_count"
+        try:
+            row = (
+                sb.table("user_usage").select(cols)
+                .eq("user_id", user_id).eq("date", today.isoformat()).execute()
+            )
+        except Exception as e:
+            if not _missing_cost_column(e):
+                raise
+            print("[usage] estimated_cost_usd column missing - cost ceiling disabled "
+                  "until migration 004 is applied; count enforcement still active", flush=True)
+            _HAS_COST_COL = False
+            row = (
+                sb.table("user_usage").select("daily_count")
+                .eq("user_id", user_id).eq("date", today.isoformat()).execute()
+            )
         daily_count: int = row.data[0]["daily_count"] if row.data else 0
-        today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if row.data else 0.0
+        today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if (row.data and _HAS_COST_COL) else 0.0
 
         # ── Monthly counts + cost ────────────────────────────────────────────
         monthly_count = 0
         monthly_cost = 0.0
         if limits["monthly"] or limits.get("cost_monthly"):
             month_start = today.replace(day=1).isoformat()
+            m_cols = "daily_count, estimated_cost_usd" if _HAS_COST_COL else "daily_count"
             m_rows = (
-                sb.table("user_usage")
-                .select("daily_count, estimated_cost_usd")
-                .eq("user_id", user_id)
-                .gte("date", month_start)
-                .execute()
+                sb.table("user_usage").select(m_cols)
+                .eq("user_id", user_id).gte("date", month_start).execute()
             )
             monthly_count = sum(r["daily_count"] for r in (m_rows.data or []))
-            monthly_cost = sum((r.get("estimated_cost_usd") or 0.0) for r in (m_rows.data or []))
+            if _HAS_COST_COL:
+                monthly_cost = sum((r.get("estimated_cost_usd") or 0.0) for r in (m_rows.data or []))
 
         # Diagnostic — current usage vs the tier's ceilings (visible in Railway logs).
         print(
@@ -288,15 +313,14 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
             return _allow(tier, limits, daily_count, monthly_count)
 
         # ── Increment count + cost ────────────────────────────────────────────
-        sb.table("user_usage").upsert(
-            {
-                "user_id": user_id,
-                "date": today.isoformat(),
-                "daily_count": daily_count + 1,
-                "estimated_cost_usd": today_cost + estimated_cost,
-            },
-            on_conflict="user_id,date",
-        ).execute()
+        payload = {
+            "user_id": user_id,
+            "date": today.isoformat(),
+            "daily_count": daily_count + 1,
+        }
+        if _HAS_COST_COL:
+            payload["estimated_cost_usd"] = today_cost + estimated_cost
+        sb.table("user_usage").upsert(payload, on_conflict="user_id,date").execute()
 
         return _allow(tier, limits, daily_count + 1, monthly_count + 1)
 

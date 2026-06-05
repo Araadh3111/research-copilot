@@ -5,6 +5,7 @@ import { ReactLenis } from "lenis/react"
 import {
   AnimatePresence,
   motion,
+  useMotionTemplate,
   useMotionValue,
   useMotionValueEvent,
   useScroll,
@@ -393,7 +394,7 @@ function QueryAct() {
 // scaling down, fading, softening — as the synthesized answer materialises at that
 // same centre. A single shared scroll progress drives both, so the papers visually
 // *become* the answer (no inter-act seam, no early fade).
-function SearchSynthesisAct() {
+function RankAct() {
   const ref = useRef<HTMLDivElement>(null)
   const { scrollYProgress: p } = useScroll({ target: ref, offset: ["start start", "end end"] })
   const entranceOpacity = useEntranceOpacity(ref)
