@@ -217,7 +217,7 @@ export function LandingPage() {
   return (
     // reducedMotion="user" honours prefers-reduced-motion across every animation below.
     <MotionConfig reducedMotion="user">
-    <div className="overflow-x-hidden bg-paper">
+    <div className="overflow-x-hidden bg-canvas">
       {/* ── Navbar ── */}
       <header className="sticky top-0 z-50 border-b border-line bg-paper/80 backdrop-blur-sm">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">

@@ -6,15 +6,14 @@ import {
   AnimatePresence,
   motion,
   useMotionTemplate,
-  useMotionValue,
   useMotionValueEvent,
   useScroll,
-  useSpring,
   useTransform,
   useReducedMotion,
   type MotionValue,
   type Variants,
 } from "motion/react"
+import { FallingBooksNav } from "@/components/falling-books-nav"
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 // Art-directed "aged paper": fixed regardless of the global light/dark theme.
@@ -146,35 +145,6 @@ function GrainOverlay({ shimmer, opacity }: { shimmer: boolean; opacity: number 
   )
 }
 
-// ── Custom cursor: a soft ink dot that lags behind the pointer ────────────────
-function InkCursor() {
-  const x = useMotionValue(-100)
-  const y = useMotionValue(-100)
-  const springX = useSpring(x, { stiffness: 250, damping: 28, mass: 0.6 })
-  const springY = useSpring(y, { stiffness: 250, damping: 28, mass: 0.6 })
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      x.set(e.clientX)
-      y.set(e.clientY)
-    }
-    window.addEventListener("pointermove", onMove)
-    return () => window.removeEventListener("pointermove", onMove)
-  }, [x, y])
-  return (
-    <motion.div
-      aria-hidden
-      className="pointer-events-none fixed left-0 top-0 z-50 h-4 w-4 rounded-full"
-      style={{
-        x: springX,
-        y: springY,
-        marginLeft: -8,
-        marginTop: -8,
-        background: `radial-gradient(circle, ${INK} 0%, ${INK} 35%, transparent 70%)`,
-        mixBlendMode: "multiply",
-      }}
-    />
-  )
-}
 
 // ── Marginalia ────────────────────────────────────────────────────────────────
 // All marginalia are wide-screen only (`lg:`), low-opacity, and pointer-events-none
@@ -1129,14 +1099,19 @@ export function ManuscriptLanding() {
     <>
       <ReactLenis root options={{ lerp: 0.085, wheelMultiplier: 1, smoothWheel: true }} />
 
-      <main className="relative" style={{ backgroundColor: PAPER, cursor: reduced ? "auto" : "none" }}>
-        <GrainOverlay shimmer={!reduced} opacity={0.14} />
+      <main className="relative bg-canvas">
+        <FallingBooksNav />
+        {/* Grain retired — the aurora canvas is intentionally clean. */}
+        <GrainOverlay shimmer={!reduced} opacity={0} />
+        {/* Living aurora — a slow drifting colour layer behind the z-10 content. */}
+        <div aria-hidden className="aurora-drift pointer-events-none fixed inset-0 z-0" />
+        {/* Faint focal vignette to keep the eye on the type. */}
         <div
           aria-hidden
           className="pointer-events-none fixed inset-0 z-0"
           style={{
             background:
-              "radial-gradient(ellipse 68% 68% at 50% 42%, transparent 46%, rgba(26,23,20,0.18) 84%, rgba(26,23,20,0.34) 100%)",
+              "radial-gradient(ellipse 80% 80% at 50% 42%, transparent 62%, rgba(26,23,20,0.05) 90%, rgba(26,23,20,0.10) 100%)",
           }}
         />
         <PageFrame />
@@ -1156,7 +1131,6 @@ export function ManuscriptLanding() {
         <FolioMarker activeAct={activeAct} />
         <MarginNote activeAct={activeAct} />
 
-        {!reduced && <InkCursor />}
       </main>
     </>
   )

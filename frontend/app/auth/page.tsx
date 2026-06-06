@@ -125,7 +125,7 @@ export default function AuthPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center bg-paper px-6 text-ink">
+    <main className="relative flex min-h-screen flex-col items-center justify-center bg-canvas px-6 text-ink">
       <div className="absolute right-5 top-5">
         <ThemeToggle />
       </div>

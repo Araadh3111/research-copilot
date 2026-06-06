@@ -331,7 +331,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
-    <div className="relative flex min-h-screen bg-paper">
+    <div className="relative flex min-h-screen bg-canvas">
       {/* Faint, static paper tooth over the whole app — calm, never animated. */}
       <div className="app-grain" aria-hidden />
       <SearchHistorySidebar

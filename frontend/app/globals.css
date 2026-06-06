@@ -21,6 +21,9 @@
   --border-soft: #DDD8CE;    /* warm light border */
   --border-strong: #C5BFB4;  /* stronger border */
   --highlight: #8B6914;      /* warm gold */
+  /* Page canvas — a soft aurora mesh shared by every full-page surface
+     (.bg-canvas). This is just the base tone the colour blooms float over. */
+  --canvas-base: #FAF9F6;    /* clean, faintly-warm near-white */
 
   /* shadcn-style aliases so existing UI primitives inherit the new look */
   --background: var(--bg-primary);
@@ -65,6 +68,7 @@
   --border-soft: #37312A;     /* hairline that lifts cards off the canvas */
   --border-strong: #4E473B;   /* stronger warm border */
   --highlight: #E9C16B;       /* gold accent — links, badges, gaps, PDF, focus ring */
+  --canvas-base: #0F0C0A;     /* deep warm near-black the nebula blooms float over */
   --destructive: #F08A7A;     /* soft red for errors */
   color-scheme: dark;
 }
@@ -149,6 +153,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* The canvas base tone backs the body so any area a page root doesn't cover
+       still matches the aurora. The blooms themselves live on `.bg-canvas`. */
+    background-color: var(--canvas-base);
   }
 }
 
@@ -163,6 +170,34 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--tracking-label);
+  }
+
+  /* ── Page canvas — the single source of truth for the full-page background.
+     A soft "aurora mesh": a clean near-white base with four diffuse colour blooms
+     drifting in from the corners (gold, rose, periwinkle, mint). Pinned to the
+     viewport so the wash stays put as the page scrolls, and kept low-opacity so
+     content and cards always read cleanly. Applied to every full-page root
+     (landing, classic, auth, share, the app) so the whole product shares one
+     background; small surfaces keep using bg-paper/bg-cream. The galaxy field
+     (/galaxy) is a separate dark experience and opts out. */
+  .bg-canvas {
+    background-color: var(--canvas-base);
+    background-image:
+      radial-gradient(ellipse 80% 70% at 12% 8%, rgba(233, 188, 92, 0.55), transparent 72%),
+      radial-gradient(ellipse 76% 66% at 90% 12%, rgba(235, 138, 138, 0.50), transparent 72%),
+      radial-gradient(ellipse 86% 76% at 86% 94%, rgba(116, 150, 238, 0.52), transparent 74%),
+      radial-gradient(ellipse 80% 70% at 10% 96%, rgba(118, 206, 162, 0.48), transparent 72%);
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+  /* Dark mode — the same four corners become a warm jewel-toned nebula on a deep
+     near-black, so the canvas glows rather than greys out. */
+  .dark .bg-canvas {
+    background-image:
+      radial-gradient(ellipse 80% 70% at 12% 8%, rgba(233, 188, 92, 0.30), transparent 72%),
+      radial-gradient(ellipse 76% 66% at 90% 12%, rgba(196, 92, 148, 0.34), transparent 72%),
+      radial-gradient(ellipse 86% 76% at 86% 94%, rgba(70, 150, 180, 0.34), transparent 74%),
+      radial-gradient(ellipse 80% 70% at 10% 96%, rgba(126, 110, 224, 0.30), transparent 72%);
   }
 }
 
@@ -206,6 +241,45 @@
 .dark .app-grain {
   mix-blend-mode: screen;
   opacity: 0.018;
+}
+
+/* ── Aurora drift — a slow, living colour layer for the landing hero. Sits on a
+   fixed full-viewport plane BEHIND the manuscript's z-10 content and breathes
+   via a transform animation (compositor-friendly, so it stays smooth). The blur
+   melts the four blooms into soft light that gently wanders and rotates, giving
+   the page a sense of being alive without ever distracting from the type. Runs
+   for everyone — it's ambient, not a reduced-motion "flourish". ────────────── */
+.aurora-drift {
+  background:
+    radial-gradient(38% 48% at 26% 30%, rgba(233, 188, 92, 0.34), transparent 70%),
+    radial-gradient(42% 52% at 76% 24%, rgba(235, 138, 138, 0.30), transparent 70%),
+    radial-gradient(48% 54% at 72% 80%, rgba(116, 150, 238, 0.32), transparent 72%),
+    radial-gradient(44% 50% at 22% 82%, rgba(118, 206, 162, 0.28), transparent 70%);
+  filter: blur(36px);
+  will-change: transform;
+  animation: aurora-drift 30s ease-in-out infinite alternate;
+}
+.dark .aurora-drift {
+  background:
+    radial-gradient(38% 48% at 26% 30%, rgba(233, 188, 92, 0.22), transparent 70%),
+    radial-gradient(42% 52% at 76% 24%, rgba(196, 92, 148, 0.24), transparent 70%),
+    radial-gradient(48% 54% at 72% 80%, rgba(70, 150, 180, 0.24), transparent 72%),
+    radial-gradient(44% 50% at 22% 82%, rgba(126, 110, 224, 0.22), transparent 70%);
+}
+@keyframes aurora-drift {
+  from { transform: scale(1.1) translate3d(-2%, -1.5%, 0) rotate(0deg); }
+  to   { transform: scale(1.22) translate3d(2%, 1.5%, 0) rotate(7deg); }
+}
+
+/* ── Grain retired ──────────────────────────────────────────────────────────
+   The aurora canvas is intentionally clean — no paper speckle. This blanket
+   override sits after the definitions above so it wins, hiding every grain
+   overlay (hero/paper/app) wherever it's mounted without editing each call
+   site. Flip to display:block here if the tactile noise is ever wanted back. */
+.hero-grain,
+.paper-grain,
+.app-grain {
+  display: none;
 }
 
 /* ── Lenis smooth-scroll (loaded on the manuscript landing). Disables the

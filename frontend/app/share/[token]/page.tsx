@@ -35,7 +35,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const shared = await getShare(token)
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen bg-canvas">
       {/* Minimal header — wordmark only, links home */}
       <header className="border-b border-line bg-paper/80 backdrop-blur-sm">
         <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
