@@ -156,7 +156,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                       thead: ({ children }) => <thead>{children}</thead>,
                       tbody: ({ children }) => <tbody>{children}</tbody>,
                       th: ({ children }) => (
-                        <th className="border-b border-line bg-ink px-5 py-3 text-left font-serif text-[11px] font-semibold uppercase tracking-wider text-cream first:w-2/5 dark:bg-parchment dark:text-ink">
+                        <th className="ms-label border-b border-line bg-ink px-5 py-3 text-left text-[11px] text-cream first:w-2/5 dark:bg-parchment dark:text-ink">
                           {children}
                         </th>
                       ),
@@ -222,7 +222,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
             <div className="mt-6 space-y-2.5">
               <div className="flex items-center gap-2">
                 <Search className="size-4 text-gold" />
-                <span className="font-serif text-[11px] font-semibold uppercase tracking-wider text-stone">
+                <span className="ms-label text-[11px] text-stone">
                   Research Gaps
                 </span>
               </div>
@@ -232,7 +232,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                     🔍
                   </span>
                   <div>
-                    <p className="font-serif text-[10px] font-semibold uppercase tracking-wider text-gold">
+                    <p className="ms-label text-[10px] text-gold">
                       Research Gap
                     </p>
                     <p className="mt-1 text-[13px] italic leading-relaxed text-body">{gap}</p>

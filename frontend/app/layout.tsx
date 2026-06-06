@@ -1,38 +1,26 @@
 import type { Metadata } from 'next'
-import { Roboto, Montserrat, PT_Mono, Playfair_Display, Inter } from 'next/font/google'
+import { PT_Mono, Playfair_Display, Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
-// Paper design system — applied globally across the whole frontend: Roboto
-// (body), Montserrat (display/headings), PT Mono (paper titles/citations),
-// self-hosted via next/font. Roboto & Montserrat are variable fonts, so the full
-// 300–700 range is available without enumerating weights; PT Mono is static and
-// so requires an explicit weight.
-const roboto = Roboto({
-  subsets: ['latin'],
-  variable: '--font-roboto',
-  display: 'swap',
-})
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  variable: '--font-montserrat',
-  display: 'swap',
-})
+// Living Manuscript type system — applied globally across the whole frontend
+// (landing, auth and the logged-in app), self-hosted via next/font:
+//   • Playfair Display → display serif for headings & the wordmark
+//   • Inter            → body copy and every UI control
+//   • PT Mono          → small-caps labels, paper titles and citations
+// Playfair & Inter are variable fonts, so the full weight range is available
+// without enumerating weights; PT Mono is static and needs an explicit weight.
 const ptMono = PT_Mono({
   weight: '400',
   subsets: ['latin'],
   variable: '--font-pt-mono',
   display: 'swap',
 })
-// Playfair Display — high-contrast display serif for the "Living Manuscript"
-// landing hero. Variable font, so the full weight range is available.
 const playfair = Playfair_Display({
   subsets: ['latin'],
   variable: '--font-playfair',
   display: 'swap',
 })
-// Inter — clean grotesque for the landing subheadline / supporting copy, paired
-// against the Playfair display serif. Variable font, full weight range.
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
@@ -56,7 +44,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${roboto.variable} ${montserrat.variable} ${ptMono.variable} ${playfair.variable} ${inter.variable}`}
+      className={`${ptMono.variable} ${playfair.variable} ${inter.variable}`}
       suppressHydrationWarning
     >
       <head>

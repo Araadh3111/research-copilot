@@ -331,7 +331,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
-    <div className="flex min-h-screen bg-paper">
+    <div className="relative flex min-h-screen bg-paper">
+      {/* Faint, static paper tooth over the whole app — calm, never animated. */}
+      <div className="app-grain" aria-hidden />
       <SearchHistorySidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
@@ -403,7 +405,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             <button
               type="submit"
               disabled={loading}
-              className="ml-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-ink px-5 font-serif text-sm font-medium text-cream transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
+              className="ml-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-ink px-5 text-sm font-medium text-cream transition-colors hover:bg-ink-soft disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowRight className="size-3.5" />}
               Search
@@ -501,7 +503,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
                 type="button"
                 onClick={() => handleModeToggle("synthesis")}
                 disabled={loading}
-                className={`rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                className={`rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                   outputMode === "synthesis" ? "bg-ink text-cream" : "text-stone hover:text-ink"
                 }`}
               >
@@ -513,7 +515,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
                   onClick={() => handleModeToggle("matrix")}
                   disabled={loading}
                   aria-disabled={!isPro}
-                  className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 font-serif text-sm font-medium transition-colors disabled:cursor-not-allowed ${
+                  className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed ${
                     !isPro
                       ? "text-stone-light"
                       : outputMode === "matrix"
@@ -537,7 +539,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               type="button"
               onClick={() => setWritingMode((w) => !w)}
               aria-pressed={writingMode}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 font-serif text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                 writingMode
                   ? "border-ink bg-ink text-cream"
                   : "border-line bg-cream text-stone hover:border-line-strong hover:text-ink"

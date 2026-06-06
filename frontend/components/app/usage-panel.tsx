@@ -20,7 +20,7 @@ function UsageRow({ label, feat }: { label: string; feat: Feat }) {
     return (
       <div className="flex items-center justify-between text-sm">
         <span className="text-stone">{label}</span>
-        <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gold">
+        <span className="ms-label rounded-full bg-gold/15 px-2 py-0.5 text-[10px] text-gold">
           Pro
         </span>
       </div>
@@ -94,11 +94,11 @@ export function UsagePanel({ refreshKey }: { refreshKey: number }) {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute right-0 z-50 mt-2 w-64 rounded-2xl border border-line bg-cream p-4 text-left shadow-xl">
             <div className="mb-3 flex items-center justify-between">
-              <span className="font-serif text-[11px] font-semibold uppercase tracking-[0.14em] text-stone">
+              <span className="ms-label text-[11px] tracking-[0.14em] text-stone">
                 This month
               </span>
               {usage && (
-                <span className="rounded-full bg-parchment px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-stone">
+                <span className="ms-label rounded-full bg-parchment px-2 py-0.5 text-[10px] text-stone">
                   {usage.tier}
                 </span>
               )}

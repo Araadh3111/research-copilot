@@ -205,7 +205,7 @@ export function WritingPanel({ isPro, synthesis, papers, draft, setDraft, textar
             <div className="flex items-start gap-2">
               <span className={`mt-1 size-2 shrink-0 rounded-full ${style.dot}`} />
               <div className="min-w-0">
-                <p className="font-serif text-[11px] font-semibold uppercase tracking-wider text-ink">{style.label}</p>
+                <p className="ms-label text-[11px] text-ink">{style.label}</p>
                 <p className="mt-1 leading-relaxed text-body">{result.message}</p>
               </div>
               <button

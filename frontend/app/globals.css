@@ -70,10 +70,16 @@
 }
 
 @theme inline {
-  /* Paper design system fonts (next/font injects the --font-* vars in layout.tsx).
-     Applied globally — the landing, auth page and search app all use these. */
-  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
-  --font-serif: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  /* ── Living Manuscript type system (next/font injects the --font-* vars in
+     layout.tsx). Applied GLOBALLY — landing, auth and the logged-in app share it
+     so the whole product reads as one manuscript:
+       • serif  → Playfair Display — page/section headings & the wordmark only
+       • sans   → Inter — body copy and every UI control (buttons, inputs)
+       • mono   → PT Mono — small-caps labels, paper titles and citations
+     Reserve the serif for real headings; small uppercase labels use `.ms-label`
+     (mono) so a high-contrast display serif never gets shrunk to 10px. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, 'Times New Roman', serif;
   --font-mono: var(--font-pt-mono), ui-monospace, 'PT Mono', monospace;
 
   /* Semantic color utilities: bg-paper, text-ink, border-line, text-gold … */
@@ -116,6 +122,14 @@
 
   /* Subtle print-like elevation for Paper surfaces (search bar, result cards). */
   --shadow-paper: 0 1px 3px rgba(0, 0, 0, 0.08);
+  /* Slightly deeper lift for raised/floating surfaces (popovers, modals). */
+  --shadow-paper-lg: 0 8px 30px rgba(26, 23, 20, 0.10);
+
+  /* Shared rhythm tokens for the manuscript work surfaces, so every page pads
+     and rounds its cards the same way (search app, results, writer, share). */
+  --radius-card: 1rem;        /* result / panel cards (rounded-2xl-ish) */
+  --space-card: 1.5rem;       /* internal card padding (p-6) */
+  --tracking-label: 0.08em;   /* small-caps PT Mono label letter-spacing */
 }
 
 @layer base {
@@ -138,6 +152,20 @@
   }
 }
 
+@layer components {
+  /* ── Manuscript caption label — the small-caps PT Mono treatment shared by
+     every section eyebrow, table header, history/usage heading and status pill.
+     One source of truth so all the app's micro-labels stay identical. Lives in
+     the components layer so a call site can still tune size/colour/tracking with
+     a plain utility (e.g. text-[10px], text-gold, tracking-[0.14em]). */
+  .ms-label {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+}
+
 /* ── Hero grain — crafted SVG noise overlay (~3.5% opacity, makes it feel
    tactile rather than flat). Tiled fractal-noise data URI, no extra request. ── */
 .hero-grain {
@@ -155,6 +183,29 @@
   background-size: 160px 160px;
   opacity: 0.07;
   mix-blend-mode: multiply;
+}
+
+/* ── App paper texture — the logged-in work surfaces want only the faintest
+   tooth of paper, never the landing's heavier grain. A single fixed, static,
+   non-interactive overlay tints the whole window so the app reads as one sheet.
+   Deliberately calm: no shimmer/animation (these are reading & writing
+   surfaces). UI chrome (header/sidebar/modals) carries a higher z-index and
+   sits above it, so the texture never muddies controls. ───────────────────── */
+.app-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='an'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23an)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  opacity: 0.025;
+  mix-blend-mode: multiply;
+}
+/* In dark mode the same dark speckle would vanish into the canvas — flip the
+   blend so the texture lifts instead, and ease off so it stays a whisper. */
+.dark .app-grain {
+  mix-blend-mode: screen;
+  opacity: 0.018;
 }
 
 /* ── Lenis smooth-scroll (loaded on the manuscript landing). Disables the

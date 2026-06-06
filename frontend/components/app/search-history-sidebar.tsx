@@ -104,7 +104,7 @@ export function SearchHistorySidebar({
             open ? "opacity-100 delay-150" : "opacity-0"
           }`}
         >
-          <div className="flex items-center gap-2 px-5 pb-3 pt-6 font-serif text-[11px] font-semibold uppercase tracking-[0.14em] text-stone">
+          <div className="ms-label flex items-center gap-2 px-5 pb-3 pt-6 text-[11px] tracking-[0.14em] text-stone">
             <Clock className="size-3.5" />
             Recent Searches
           </div>
@@ -140,7 +140,7 @@ export function SearchHistorySidebar({
                       </span>
                       <span className="mt-1.5 flex items-center gap-2">
                         <span
-                          className={`rounded-full px-1.5 py-0.5 font-serif text-[10px] font-semibold uppercase tracking-wider ${
+                          className={`ms-label rounded-full px-1.5 py-0.5 text-[10px] ${
                             row.output_mode === "matrix"
                               ? "bg-gold/15 text-gold"
                               : "bg-line text-stone"

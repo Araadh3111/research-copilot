@@ -437,14 +437,24 @@ function RankAct() {
 
           {/* Stage: the ranked stack and the answer share one centre, layered */}
           <div className="relative w-full" style={{ minHeight: 440 }}>
-            {/* Ranked papers — converge + dissolve into the centre */}
+            {/* Ranked papers — a sorting STAGE: cards are absolutely placed so
+               they can slide past one another into rank order, then the whole
+               stack converges + dissolves into the centre. */}
             <motion.div
               style={{ scale: cardsScale, opacity: cardsOpacity, filter: cardsBlur }}
-              className="absolute inset-0 flex flex-col justify-center gap-3"
+              className="absolute inset-0 flex items-center justify-center"
             >
-              {PAPERS.map((paper, i) => (
-                <PaperRowWrapper key={paper.n} paper={paper} index={i} progress={p} />
-              ))}
+              <div className="relative w-full" style={{ height: ROW_PITCH * PAPERS.length }}>
+                {PAPERS.map((paper, i) => (
+                  <PaperRowWrapper
+                    key={paper.n}
+                    paper={paper}
+                    rank={i}
+                    fromSlot={SCRAMBLE[i]}
+                    progress={p}
+                  />
+                ))}
+              </div>
             </motion.div>
 
             {/* The synthesized answer — materialises where the papers converge */}
@@ -480,38 +490,66 @@ function RankAct() {
   )
 }
 
-// One ranked paper row: the whole card flies in from the pile (x + rotate settle),
-// then its relevance stamp thuds on. Driven entirely by the section's scroll.
-function PaperRowWrapper({ paper, index, progress }: { paper: Paper; index: number; progress: MotionValue<number> }) {
-  const a0 = 0.03 + index * 0.09
-  const a1 = a0 + 0.28
-  const x = useTransform(progress, [a0, a1], [220, 0])
-  const opacity = useTransform(progress, [a0, a1], [0, 1])
-  const rotate = useTransform(progress, [a0, a1], [index % 2 ? 7 : -7, 0])
-  const s0 = 0.6 + index * 0.08
-  const s1 = s0 + 0.1
-  const stampScale = useTransform(progress, [s0, s1], [1.9, 1])
-  const stampOpacity = useTransform(progress, [s0, s1], [0, 1])
-  const stampRotate = useTransform(progress, [s0, s1], [-22, -8])
+// Vertical pitch between paper rows on the sorting stage (card height + gap).
+const ROW_PITCH = 92
+// Scrambled entry slots → final score-rank. A derangement so EVERY card moves
+// when the scores land: #1 and #3 rise, #2 and #4 drop — the sort reads as
+// motion, not a settle. Index = final rank (PAPERS is already score-sorted),
+// value = the slot the card first appears in.
+const SCRAMBLE = [2, 0, 3, 1]
+
+// One paper on the ranking stage. The fly-in/stamp is gone: the card simply
+// fades in at its scrambled slot, the gold relevance score pops on, and THEN —
+// the hero moment — it slides vertically to its score-ranked slot, passing the
+// others, so the viewer literally watches "rank by relevance" happen. Driven
+// entirely by the section's scroll, so it scrubs both ways.
+function PaperRowWrapper({
+  paper,
+  rank,
+  fromSlot,
+  progress,
+}: {
+  paper: Paper
+  rank: number
+  fromSlot: number
+  progress: MotionValue<number>
+}) {
+  // 1) Enter UNORDERED — fade in at the scrambled slot (lightly staggered).
+  const e0 = 0.05 + fromSlot * 0.03
+  const opacity = useTransform(progress, [e0, e0 + 0.09], [0, 1])
+
+  // 2) Score assigned — the gold relevance score swells on (a calm pop, not a
+  //    stamp). This is the data that's about to drive the sort.
+  const sc0 = 0.24 + rank * 0.015
+  const scoreScale = useTransform(progress, [sc0, sc0 + 0.07], [0.4, 1])
+  const scoreOpacity = useTransform(progress, [sc0, sc0 + 0.07], [0, 1])
+
+  // 3) RE-SORT — the card travels from its scrambled slot to its ranked slot.
+  //    Highest score ends at the top. Interpolating the slot index (not a fixed
+  //    pixel pair) keeps every card on a clean vertical track as they cross.
+  const slot = useTransform(progress, [0.34, 0.5], [fromSlot, rank])
+  const y = useTransform(slot, (s) => s * ROW_PITCH)
+
+  // 4) Rank ordinal settles in once the order is final.
+  const ordinalOpacity = useTransform(progress, [0.5, 0.55], [0, 1])
 
   return (
     <motion.div
       style={{
-        x,
+        y,
         opacity,
-        rotate,
         backgroundColor: PAPER_CARD,
         borderColor: "rgba(86,62,28,0.12)",
         boxShadow: CARD_SHADOW,
       }}
-      className="flex w-full items-center gap-4 rounded-[3px] border px-5 py-4"
+      className="absolute inset-x-0 top-0 flex items-center gap-4 rounded-[3px] border px-5 py-4"
     >
-      <span
-        className="hidden text-[12px] tabular-nums sm:block"
-        style={{ fontFamily: "var(--font-pt-mono), monospace", color: "rgba(26,23,20,0.35)" }}
+      <motion.span
+        className="hidden text-[12px] font-semibold tabular-nums sm:block"
+        style={{ opacity: ordinalOpacity, fontFamily: "var(--font-pt-mono), monospace", color: "rgba(26,23,20,0.45)" }}
       >
-        {String(index + 1).padStart(2, "0")}
-      </span>
+        {String(rank + 1).padStart(2, "0")}
+      </motion.span>
       <div className="min-w-0 flex-1">
         <p
           className="text-[15px] leading-tight sm:text-[16px]"
@@ -527,7 +565,7 @@ function PaperRowWrapper({ paper, index, progress }: { paper: Paper; index: numb
         </p>
       </div>
       <motion.div
-        style={{ scale: stampScale, opacity: stampOpacity, rotate: stampRotate, borderColor: GOLD }}
+        style={{ scale: scoreScale, opacity: scoreOpacity, borderColor: GOLD }}
         className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-2"
       >
         <span
@@ -690,6 +728,274 @@ function CloserAct() {
   )
 }
 
+// ── Back-matter ───────────────────────────────────────────────────────────────
+// After the scrollytelling acts, the page settles into calm, static "back-matter":
+// a scannable recap (for people who don't scroll slowly), a final call to action,
+// and a book-colophon footer. No scroll-scrubbing here — a single gentle in-view
+// fade, then it stays put, so the reading/clicking experience is quiet.
+
+const REVEAL_IN = {
+  initial: { opacity: 0, y: 22 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-80px" },
+  transition: { duration: 0.7, ease: EASE_OUT },
+} as const
+
+// Mono small-caps eyebrow shared by the back-matter sections.
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="text-[11px] uppercase tracking-[0.35em]"
+      style={{ fontFamily: "var(--font-pt-mono), monospace", color: GOLD }}
+    >
+      {children}
+    </p>
+  )
+}
+
+const RECAP_FEATURES = [
+  { k: "01", title: "Relevance-ranked", body: "Papers ranked by what matters to your query, not how often they've been cited." },
+  { k: "02", title: "Cross-paper synthesis", body: "Finds contradictions and gaps across the full set — the analysis a researcher actually needs." },
+  { k: "03", title: "Zero hallucinations", body: "Every claim links to the actual paper. No invented citations, ever." },
+]
+
+type Tier = { name: string; price: string; featured: boolean; cta: string; points: string[] }
+const TIERS: Tier[] = [
+  { name: "Free", price: "$0", featured: false, cta: "Start for free", points: ["10 searches / month", "Synthesis mode"] },
+  {
+    name: "Pro",
+    price: "$29",
+    featured: true,
+    cta: "Start Pro trial",
+    points: ["120 searches / month", "Comparison matrix", "CSV + BibTeX export", "Priority synthesis (Sonnet)"],
+  },
+]
+
+// A little gold tick used in the pricing lists (no icon dependency in this file).
+function Tick() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="mt-[3px] size-3.5 shrink-0">
+      <path d="M3 8.5l3 3 7-7.5" fill="none" stroke={GOLD} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PricingCard({ tier }: { tier: Tier }) {
+  return (
+    <div
+      className="flex flex-col rounded-[5px] p-8 sm:p-9"
+      style={{
+        backgroundColor: tier.featured ? "rgba(139,105,20,0.05)" : PAPER_CARD,
+        border: tier.featured ? `1.5px solid ${GOLD}` : "1px solid rgba(86,62,28,0.14)",
+        boxShadow: CARD_SHADOW,
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <h3 className="text-[26px]" style={{ fontFamily: "var(--font-playfair), Georgia, serif", fontWeight: 600, color: INK }}>
+          {tier.name}
+        </h3>
+        {tier.featured && (
+          <span
+            className="rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-[0.12em]"
+            style={{ fontFamily: "var(--font-pt-mono), monospace", backgroundColor: "rgba(139,105,20,0.14)", color: GOLD }}
+          >
+            Popular
+          </span>
+        )}
+      </div>
+      <p className="mt-2" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.6)" }}>
+        <span className="text-2xl font-semibold" style={{ color: INK }}>{tier.price}</span> / month
+      </p>
+      <ul className="mt-6 flex-1 space-y-2.5">
+        {tier.points.map((p) => (
+          <li key={p} className="flex items-start gap-2.5 text-[14px]" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.72)" }}>
+            <Tick />
+            {p}
+          </li>
+        ))}
+      </ul>
+      <a
+        href="/auth"
+        className="mt-8 block rounded-full px-5 py-3 text-center text-[13px] tracking-[0.03em] transition-transform duration-300 hover:-translate-y-0.5"
+        style={{
+          fontFamily: "var(--font-inter), system-ui, sans-serif",
+          fontWeight: 500,
+          backgroundColor: tier.featured ? INK : "transparent",
+          color: tier.featured ? PAPER : INK,
+          border: tier.featured ? "none" : `1px solid rgba(26,23,20,0.25)`,
+        }}
+      >
+        {tier.cta}
+      </a>
+    </div>
+  )
+}
+
+// A scannable recap for visitors who don't read the slow scroll story: what
+// Researca does, plus the two pricing tiers. Anchors (#features / #pricing) let
+// the footer link straight here.
+function RecapSection() {
+  return (
+    <section id="features" className="relative z-10 w-full px-6 pt-24 pb-20 sm:pt-28">
+      <div className="mx-auto max-w-5xl">
+        <motion.div {...REVEAL_IN} className="text-center">
+          <Eyebrow>The short of it</Eyebrow>
+          <h2
+            className="mx-auto mt-4 max-w-2xl text-[clamp(28px,4vw,42px)] leading-[1.12] tracking-tight"
+            style={{ fontFamily: "var(--font-playfair), Georgia, serif", fontWeight: 600, color: INK }}
+          >
+            From question to cited answer.
+          </h2>
+        </motion.div>
+
+        <motion.div {...REVEAL_IN} className="mt-14 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8">
+          {RECAP_FEATURES.map((f) => (
+            <div key={f.title} className="text-left">
+              <p className="text-[12px] tracking-[0.2em]" style={{ fontFamily: "var(--font-pt-mono), monospace", color: GOLD }}>
+                {f.k}
+              </p>
+              <h3 className="mt-3 text-[20px]" style={{ fontFamily: "var(--font-playfair), Georgia, serif", fontWeight: 600, color: INK }}>
+                {f.title}
+              </h3>
+              <p className="mt-2.5 text-[14.5px] leading-relaxed" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.66)" }}>
+                {f.body}
+              </p>
+            </div>
+          ))}
+        </motion.div>
+
+        <motion.div {...REVEAL_IN} id="pricing" className="mx-auto mt-20 max-w-3xl scroll-mt-24">
+          <div className="mb-8 text-center">
+            <Eyebrow>Simple, honest pricing</Eyebrow>
+          </div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {TIERS.map((t) => (
+              <PricingCard key={t.name} tier={t} />
+            ))}
+          </div>
+          <p className="mt-7 text-center text-[13px]" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.5)" }}>
+            Students &amp; researchers in developing countries —{" "}
+            <a href="mailto:araadh3111@gmail.com" className="underline decoration-[rgba(139,105,20,0.4)] underline-offset-2 transition-colors hover:decoration-[var(--highlight)]" style={{ color: INK }}>
+              email for a discount
+            </a>
+            .
+          </p>
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
+// Final call to action — the page ends on an action, not a fade-out.
+function FinalCtaBand() {
+  return (
+    <section className="relative z-10 w-full px-6 py-28 sm:py-32">
+      <motion.div {...REVEAL_IN} className="mx-auto flex max-w-2xl flex-col items-center text-center">
+        <Eyebrow>Ready when you are</Eyebrow>
+        <h2
+          className="mt-5 text-4xl leading-[1.1] tracking-tight sm:text-6xl"
+          style={{ fontFamily: "var(--font-playfair), Georgia, serif", fontWeight: 600, color: INK }}
+        >
+          Begin researching
+        </h2>
+        <p
+          className="mx-auto mt-5 max-w-md text-[16px] leading-relaxed"
+          style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.66)" }}
+        >
+          Your first literature review is thirty seconds away. No credit card.
+        </p>
+        <div className="mt-10">
+          <WaxSealButton label="Start for free" />
+        </div>
+      </motion.div>
+    </section>
+  )
+}
+
+// ── Colophon footer — the book's back-matter ──────────────────────────────────
+const FOOTER_COLS: { heading: string; links: { label: string; href: string; ext?: boolean }[] }[] = [
+  { heading: "Product", links: [ { label: "Features", href: "#features" }, { label: "Pricing", href: "#pricing" } ] },
+  { heading: "Account", links: [ { label: "Sign in", href: "/auth" }, { label: "Start free", href: "/auth" } ] },
+  {
+    heading: "Resources",
+    links: [
+      { label: "GitHub", href: "https://github.com/Araadh3111/research-copilot", ext: true },
+      { label: "X / Twitter", href: "https://x.com/araadhsingh1", ext: true },
+    ],
+  },
+]
+
+function Colophon() {
+  const hairline = "rgba(86,62,28,0.16)"
+  const muted = "rgba(26,23,20,0.55)"
+  const faint = "rgba(26,23,20,0.42)"
+  return (
+    <footer className="relative z-10 w-full px-6 pb-12 pt-16" style={{ borderTop: `1px solid ${hairline}` }}>
+      <div className="mx-auto max-w-5xl">
+        <div className="grid grid-cols-2 gap-10 sm:grid-cols-4 sm:gap-8">
+          {/* Wordmark + tagline */}
+          <div className="col-span-2 sm:col-span-1">
+            <div className="flex items-center gap-2.5">
+              <span aria-hidden className="grid h-5 w-5 place-items-center rounded-full text-[10px]" style={{ backgroundColor: GOLD, color: INK }}>
+                ✦
+              </span>
+              <span className="text-[20px]" style={{ fontFamily: "var(--font-playfair), Georgia, serif", fontWeight: 600, color: INK }}>
+                Researca
+              </span>
+            </div>
+            <p className="mt-3 max-w-[16rem] text-[13px] leading-relaxed" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: muted }}>
+              Literature review, done in thirty seconds.
+            </p>
+          </div>
+
+          {/* Link columns */}
+          {FOOTER_COLS.map((col) => (
+            <div key={col.heading}>
+              <p className="text-[11px] uppercase tracking-[0.22em]" style={{ fontFamily: "var(--font-pt-mono), monospace", color: GOLD }}>
+                {col.heading}
+              </p>
+              <ul className="mt-4 space-y-2.5">
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <a
+                      href={l.href}
+                      {...(l.ext ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      className="text-[13.5px] transition-colors hover:text-[var(--highlight)]"
+                      style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.7)" }}
+                    >
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        {/* Back-matter rules */}
+        <div className="mt-14 space-y-1.5 border-t pt-6" style={{ borderColor: hairline }}>
+          <p className="text-[12px]" style={{ fontFamily: "var(--font-pt-mono), monospace", color: muted }}>
+            Built by Araadh · Age 15 · Chandigarh, India
+          </p>
+          <p className="text-[13px] italic" style={{ fontFamily: "var(--font-playfair), Georgia, serif", color: INK }}>
+            Real papers. Real citations. No hallucinations.
+          </p>
+        </div>
+
+        {/* Colophon line + copyright */}
+        <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] uppercase tracking-[0.18em]" style={{ fontFamily: "var(--font-pt-mono), monospace", color: faint }}>
+            Set in Playfair Display &amp; Inter
+          </p>
+          <p className="text-[11px] uppercase tracking-[0.18em]" style={{ fontFamily: "var(--font-pt-mono), monospace", color: faint }}>
+            © 2026 Researca
+          </p>
+        </div>
+      </div>
+    </footer>
+  )
+}
+
 // ── Hero ──────────────────────────────────────────────────────────────────────
 const headlineContainer: Variants = {
   hidden: {},
@@ -840,6 +1146,11 @@ export function ManuscriptLanding() {
         <RankAct />
         <SynthesisAct />
         <CloserAct />
+
+        {/* Calm, static back-matter after the scroll story */}
+        <RecapSection />
+        <FinalCtaBand />
+        <Colophon />
 
         <ProgressRail progress={pageProgress} activeAct={activeAct} />
         <FolioMarker activeAct={activeAct} />
