@@ -386,10 +386,10 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               onClick={() => setPaletteOpen(true)}
               aria-label="Open command palette"
               title="Command palette"
-              className="hidden items-center gap-1.5 rounded-full border border-line bg-cream px-3 py-1.5 text-sm text-stone transition-colors hover:border-line-strong hover:text-ink sm:inline-flex"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-cream px-2.5 py-1.5 text-sm text-stone transition-colors hover:border-line-strong hover:text-ink sm:px-3"
             >
               <Command className="size-3.5" />
-              <span className="ms-label text-[11px] tracking-[0.1em]">K</span>
+              <span className="ms-label hidden text-[11px] tracking-[0.1em] sm:inline">K</span>
             </button>
             <UsagePanel refreshKey={usageRefresh} />
             <ThemeToggle />
