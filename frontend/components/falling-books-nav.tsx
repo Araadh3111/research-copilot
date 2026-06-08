@@ -2,8 +2,16 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "motion/react"
-import { BookOpen } from "lucide-react"
+import { BookOpen, Menu, X } from "lucide-react"
 import { Logo } from "@/components/logo"
+
+// Secondary nav destinations, shared by the desktop row and the mobile menu so
+// the two never drift. The "Sign in" CTA is rendered separately (always visible).
+const NAV_LINKS = [
+  { href: "/classic", label: "How it works" },
+  { href: "/desk", label: "The Desk" },
+  { href: "/galaxy", label: "Explore" },
+] as const
 
 /**
  * FallingBooksNav — a sticky top navigation bar with a continuous "books
@@ -46,6 +54,10 @@ export function FallingBooksNav() {
   useEffect(() => setMounted(true), [])
   const animate = mounted
 
+  // Mobile-only dropdown: without it the secondary links (hidden on < sm) are
+  // unreachable on a phone, so landing routes like /desk look "missing".
+  const [menuOpen, setMenuOpen] = useState(false)
+
   return (
     <header className="sticky top-0 z-50 border-b border-line/70 bg-canvas/70 backdrop-blur-md">
       {/* Falling-books layer — decorative, clipped to the bar, behind content. */}
@@ -84,33 +96,53 @@ export function FallingBooksNav() {
           </span>
         </a>
 
-        <div className="flex items-center gap-6">
-          <a
-            href="/classic"
-            className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
-          >
-            How it works
-          </a>
-          <a
-            href="/desk"
-            className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
-          >
-            The Desk
-          </a>
-          <a
-            href="/galaxy"
-            className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
-          >
-            Explore
-          </a>
+        <div className="flex items-center gap-4 sm:gap-6">
+          {/* Desktop link row */}
+          {NAV_LINKS.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
+            >
+              {l.label}
+            </a>
+          ))}
           <a
             href="/auth"
             className="whitespace-nowrap rounded-full bg-ink px-5 py-2 text-sm font-medium text-cream transition-colors hover:bg-ink-soft"
           >
             Sign in
           </a>
+          {/* Mobile menu toggle */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            className="inline-flex size-9 items-center justify-center rounded-full border border-line text-stone transition-colors hover:border-line-strong hover:text-ink sm:hidden"
+          >
+            {menuOpen ? <X className="size-4" /> : <Menu className="size-4" />}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile dropdown — stacks the secondary links below the bar. */}
+      {menuOpen && (
+        <div className="relative z-10 border-t border-line/70 bg-canvas/95 backdrop-blur-md sm:hidden">
+          <div className="mx-auto flex max-w-6xl flex-col px-6 py-2">
+            {NAV_LINKS.map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                onClick={() => setMenuOpen(false)}
+                className="py-2.5 text-sm text-stone transition-colors hover:text-ink"
+              >
+                {l.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </header>
   )
 }
