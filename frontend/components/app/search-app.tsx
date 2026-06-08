@@ -3,13 +3,14 @@
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X, PenLine } from "lucide-react"
+import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X, PenLine, Command } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearchLoader } from "@/components/research-loader"
 import { SearchHistorySidebar } from "@/components/app/search-history-sidebar"
 import { WritingPanel } from "@/components/app/writing-panel"
 import { UsagePanel } from "@/components/app/usage-panel"
+import { CommandPalette } from "@/components/app/command-palette"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
@@ -70,6 +71,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [tier, setTier] = useState<string>(initialTier ?? "free")
   const [showUpgrade, setShowUpgrade] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [historyRefresh, setHistoryRefresh] = useState(0)
   const [usageRefresh, setUsageRefresh] = useState(0)
   const [waitlistEmail, setWaitlistEmail] = useState("")
@@ -328,6 +330,31 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
     }
   }
 
+  // ── Command palette (⌘K) handlers ───────────────────────────────────────────
+  // Launch a fresh synthesis review straight from the palette prompt.
+  function runReviewFromPalette(q: string) {
+    const t = q.trim()
+    if (!t) return
+    setQuery(t)
+    setOutputMode("synthesis")
+    setSubmittedQuery(t)
+    void runSearch(t, level, "synthesis")
+  }
+
+  // Reset the desk back to a clean, empty search.
+  function newReview() {
+    setQuery("")
+    setPapers([])
+    setSynthesis("")
+    setSubmittedQuery("")
+    setOutputMode("synthesis")
+    setError(null)
+    setInvalidQuery(null)
+    setQuotaError(null)
+    setWritingMode(false)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   const hasResults = papers.length > 0 || synthesis.length > 0 || streaming
 
   return (
@@ -354,6 +381,16 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </a>
           <div className="flex items-center gap-3 sm:gap-4">
             {userEmail && <span className="hidden text-sm text-stone-light sm:block">{userEmail}</span>}
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open command palette"
+              title="Command palette"
+              className="hidden items-center gap-1.5 rounded-full border border-line bg-cream px-3 py-1.5 text-sm text-stone transition-colors hover:border-line-strong hover:text-ink sm:inline-flex"
+            >
+              <Command className="size-3.5" />
+              <span className="ms-label text-[11px] tracking-[0.1em]">K</span>
+            </button>
             <UsagePanel refreshKey={usageRefresh} />
             <ThemeToggle />
             <button
@@ -453,6 +490,20 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           <Lock className="size-3" />
           Your searches are not stored beyond 24h and never used for training.
         </p>
+
+        {/* Quiet pointer to the command palette — the app's keyboard-first spine. */}
+        {!hasResults && !loading && (
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="mt-5 inline-flex items-center gap-2 rounded-full border border-line bg-cream/70 px-3.5 py-1.5 text-xs text-stone-light transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <Command className="size-3" />
+            <span>
+              Press <span className="ms-label text-stone">⌘K</span> for commands
+            </span>
+          </button>
+        )}
 
         {error && (
           <div
@@ -677,6 +728,29 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </div>
         </div>
       )}
+
+      {/* ⌘K command palette — Researca's desk console, wired to the handlers above */}
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        ctx={{
+          runReview: runReviewFromPalette,
+          newReview,
+          level,
+          setLevel,
+          hasResults,
+          outputMode,
+          setMode: handleModeToggle,
+          writingMode,
+          toggleWriting: () => setWritingMode((w) => !w),
+          isPro,
+          papers,
+          synthesis,
+          sidebarOpen,
+          toggleSidebar: () => setSidebarOpen((o) => !o),
+          logout: handleLogout,
+        }}
+      />
     </div>
   )
 }
