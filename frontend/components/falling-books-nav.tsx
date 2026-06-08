@@ -92,6 +92,12 @@ export function FallingBooksNav() {
             How it works
           </a>
           <a
+            href="/desk"
+            className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
+          >
+            The Desk
+          </a>
+          <a
             href="/galaxy"
             className="hidden text-sm text-stone transition-colors hover:text-ink sm:block"
           >
