@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download, Share2, Check, Plus } from "lucide-react"
+import { BookOpen, ExternalLink, FileText, Quote, LayoutGrid, Sparkles, Search, Download, Share2, Check, Plus, Monitor } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 
@@ -146,6 +146,11 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
           {hasSynthesis ? (
             isMatrix ? (
               <>
+                {/* The wide comparison grid is desktop-optimized; it stays usable
+                    on a phone (horizontal scroll) but reads best with room. */}
+                <p className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-parchment/60 px-3 py-1 text-xs text-stone md:hidden">
+                  <Monitor className="size-3" /> Best viewed on a larger screen — scroll the table sideways
+                </p>
                 <div className="overflow-x-auto rounded-xl border border-line">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

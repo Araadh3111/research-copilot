@@ -18,6 +18,11 @@ const GalaxyScene = dynamic(() => import("./galaxy-scene"), {
 // galaxy is always a dark experience and opts out of the light/dark canvas.
 const INK = "#F4EFE6"
 const GOLD = "#E9C16B"
+// Soft gold bloom for the overlay's gold accents — the same emissive halo the
+// star field gets from the WebGL bloom pass, so the type belongs to the void.
+// This is for the dark/cosmic surface ONLY; the warm parchment pages stay flat.
+const GOLD_GLOW = "0 0 10px rgba(233,193,107,0.7), 0 0 22px rgba(233,193,107,0.35)"
+const GOLD_TEXT_GLOW = "0 0 14px rgba(233,193,107,0.45)"
 
 export function GalaxyLanding() {
   return (
@@ -45,7 +50,7 @@ export function GalaxyLanding() {
             <span
               aria-hidden
               className="grid h-6 w-6 place-items-center rounded-full text-[11px]"
-              style={{ backgroundColor: GOLD, color: "#04060d" }}
+              style={{ backgroundColor: GOLD, color: "#04060d", boxShadow: GOLD_GLOW }}
             >
               ✦
             </span>
@@ -64,7 +69,7 @@ export function GalaxyLanding() {
 
         {/* Centred hero */}
         <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
-          <p className="ms-label text-[11px] tracking-[0.35em]" style={{ color: GOLD }}>
+          <p className="ms-label text-[11px] tracking-[0.35em]" style={{ color: GOLD, textShadow: GOLD_TEXT_GLOW }}>
             A field of questions
           </p>
           <h1
@@ -85,7 +90,7 @@ export function GalaxyLanding() {
             <span
               aria-hidden
               className="grid h-5 w-5 place-items-center rounded-full text-[9px] transition-transform duration-300 group-hover:rotate-12"
-              style={{ backgroundColor: GOLD, color: "#04060d" }}
+              style={{ backgroundColor: GOLD, color: "#04060d", boxShadow: GOLD_GLOW }}
             >
               ✦
             </span>

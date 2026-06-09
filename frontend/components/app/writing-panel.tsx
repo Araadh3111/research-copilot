@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useState } from "react"
-import { Lock, PenLine, ShieldCheck, Loader2, X } from "lucide-react"
+import { Lock, PenLine, ShieldCheck, Loader2, X, Monitor } from "lucide-react"
 
 import { API_BASE_URL } from "@/lib/api"
 import { createClient } from "@/utils/supabase/client"
@@ -146,8 +146,8 @@ export function WritingPanel({ isPro, synthesis, papers, draft, setDraft, textar
   // ── Pro tier: manual writing surface with select-to-verify ──────────────────
   const style = VERDICT_STYLES[result?.verdict ?? "error"]
   return (
-    <div className="flex h-full min-h-[420px] flex-col rounded-2xl border border-line bg-cream p-6 shadow-paper">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-[520px] flex-col rounded-2xl border border-line bg-cream p-4 shadow-paper sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2.5">
           <span className="inline-flex size-8 items-center justify-center rounded-lg bg-parchment text-ink">
             <PenLine className="size-4" />
@@ -159,21 +159,31 @@ export function WritingPanel({ isPro, synthesis, papers, draft, setDraft, textar
         </span>
       </div>
 
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          setSel(null)
-        }}
-        onMouseUp={handleMouseUp}
-        onScroll={() => setSel(null)}
-        placeholder="Write your literature review here. Use “Insert citation” on any paper on the left, then highlight a sentence to verify it against your sources."
-        aria-label="Literature review draft"
-        className="min-h-[320px] flex-1 resize-none rounded-xl border border-line bg-paper/50 p-4 text-[15px] leading-[1.7] text-body outline-none transition-colors placeholder:text-stone-light focus:border-line-strong"
-      />
+      {/* The split-panel writing surface is genuinely tight on a phone; keep it
+          usable but set expectations with a small, friendly inline note. */}
+      <p className="mb-3 inline-flex items-center gap-1.5 self-start rounded-full border border-line bg-parchment/60 px-3 py-1 text-xs text-stone lg:hidden">
+        <Monitor className="size-3" /> Best viewed on a larger screen
+      </p>
 
-      <div className="mt-3 text-xs text-stone-light">
+      {/* A real page on a desk: tinted scroll surface holding a centred, generous
+          parchment page with a comfortable reading measure and document type. */}
+      <div className="flex-1 overflow-y-auto rounded-xl bg-parchment/30 p-3 sm:p-6">
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setSel(null)
+          }}
+          onMouseUp={handleMouseUp}
+          onScroll={() => setSel(null)}
+          placeholder="Write your literature review here. Use “Insert citation” on any paper on the left, then highlight a sentence to verify it against your sources."
+          aria-label="Literature review draft"
+          className="mx-auto block min-h-[60vh] w-full max-w-[700px] resize-none rounded-lg border border-line bg-paper px-5 py-8 text-[18px] leading-[1.7] text-body shadow-paper outline-none transition-colors placeholder:text-stone-light focus:border-line-strong sm:px-12 sm:py-12"
+        />
+      </div>
+
+      <div className="mt-3 px-1 text-xs text-stone-light">
         {draft.trim() ? `${draft.trim().split(/\s+/).length} words` : "Start writing…"}
       </div>
 
