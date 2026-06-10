@@ -1,9 +1,10 @@
 -- pgvector + local-embeddings foundation (unblocks BYO-PDF 1.3 and paper cache 2.2).
 -- Run once in the Supabase SQL editor.
 --
--- Embeddings are produced locally by sentence-transformers 'all-MiniLM-L6-v2',
--- which outputs 384-dim vectors — hence vector(384). If you swap the model,
--- change the dimension here AND in backend/embeddings.py (EMBED_DIM).
+-- Embeddings are produced by the Voyage API model 'voyage-3-lite', which outputs
+-- 512-dim vectors — hence vector(512). If you swap the model, change the dimension
+-- here AND in backend/embeddings.py (EMBED_DIM). (Originally vector(384) for the
+-- local all-MiniLM-L6-v2 model; migration 008 bumps an already-applied 384 schema.)
 
 create extension if not exists vector;
 
@@ -17,7 +18,7 @@ create table if not exists public.doc_chunks (
   doc_id       text not null,               -- paperId / arXiv id / uploaded-doc id
   chunk_index  integer not null default 0,
   content      text not null,
-  embedding    vector(384) not null,
+  embedding    vector(512) not null,
   metadata     jsonb not null default '{}',
   created_at   timestamptz not null default now(),
   unique (source_type, doc_id, chunk_index, owner_id)
@@ -35,7 +36,7 @@ create index if not exists doc_chunks_owner_idx
 -- Returns the closest chunks, optionally filtered to a source type and/or owner
 -- (owner filter matches global rows OR the given user's rows).
 create or replace function public.match_doc_chunks(
-  query_embedding vector(384),
+  query_embedding vector(512),
   match_count     int default 8,
   filter_source   text default null,
   filter_owner    uuid default null

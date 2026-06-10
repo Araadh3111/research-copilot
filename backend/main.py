@@ -726,13 +726,12 @@ async def admin_costs(request: Request):
 
 @app.get("/admin/embed-check")
 async def admin_embed_check(request: Request):
-    """Verify local embeddings actually deploy + boot on Railway (torch sanity check).
+    """Verify embeddings work on Railway by making a REAL Voyage API call.
 
-    Triggers a REAL embedding call — loads the sentence-transformers model and
-    embeds a string — so it proves torch installed and the model fits in memory.
-    Guarded by ADMIN_KEY (X-Admin-Key header or ?key=). If torch failed to install
-    the whole backend wouldn't deploy; if it OOMs on model load this returns 500
-    with the error, which is the signal to swap embeddings.py to a hosted backend.
+    Embeds a probe string via the Voyage API and reports the model name + vector
+    dimension, so a correct deploy shows model 'voyage-3-lite' and dim 512.
+    Guarded by ADMIN_KEY (X-Admin-Key header or ?key=). Returns 500 if VOYAGE_API_KEY
+    is unset or the API call fails (bad key, network, rate limit).
     """
     guard = _admin_guard(request)
     if guard is not None:
@@ -742,7 +741,7 @@ async def admin_embed_check(request: Request):
     if not embeddings.is_available():
         return JSONResponse(status_code=500, content={
             "available": False,
-            "error": "sentence-transformers not importable — dependency missing or build failed",
+            "error": "VOYAGE_API_KEY is not set — add it in the Railway environment.",
         })
     t = time.monotonic()
     try:
