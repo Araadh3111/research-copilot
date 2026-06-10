@@ -13,3 +13,6 @@ slowapi>=0.1.9
 sentence-transformers>=3.0.0
 # PDF text extraction for the BYO-PDF library (pure-Python, lightweight).
 pypdf>=4.0.0
+# Required by FastAPI to parse multipart/form-data (PDF uploads) — without it the
+# /library/upload route raises at import and the whole app fails to boot.
+python-multipart>=0.0.9

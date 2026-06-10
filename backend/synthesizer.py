@@ -143,8 +143,20 @@ Keep bullets concise but specific — 20-35 words. Never sacrifice a concrete fi
     return system, user
 
 
-def _build_matrix_prompt(query: str, papers: list) -> tuple[str, str]:
-    """Return (system_prompt, user_prompt) for the comparison matrix output mode."""
+# Default comparison columns when the user hasn't defined custom ones.
+DEFAULT_MATRIX_COLUMNS = ["Methodology", "Key Findings", "Limitations/Gaps"]
+
+
+def _build_matrix_prompt(query: str, papers: list, columns: list[str] | None = None) -> tuple[str, str]:
+    """Return (system_prompt, user_prompt) for the comparison matrix output mode.
+
+    ``columns`` are the user's custom extraction columns (Task 3.3), e.g.
+    ["dataset used", "sample size", "reported accuracy"]. Falls back to the default
+    methodology/findings/limitations columns when none are given. "Paper Title" is
+    always the first column.
+    """
+    cols = [c for c in (columns or []) if c.strip()] or list(DEFAULT_MATRIX_COLUMNS)
+
     abstracts_text = ""
     for i, paper in enumerate(papers):
         title = paper.get("title", "No title")
@@ -160,27 +172,33 @@ def _build_matrix_prompt(query: str, papers: list) -> tuple[str, str]:
         "You are a research synthesis engine for Researca OS. "
         "Output ONLY a GitHub-Flavored Markdown table — no preamble, no commentary, "
         "no trailing text whatsoever. Keep each cell under 20 words. "
-        "Use '—' for unknown or not-applicable values."
+        "Extract each column's value for each paper strictly from its abstract; "
+        "use '—' when the abstract doesn't state it (never guess or invent values)."
     )
+
+    header_cols = "Paper Title | " + " | ".join(cols)
+    divider = "|".join(["---"] * (len(cols) + 1))
 
     user = f"""Research question: "{query}"
 
 Papers:
 {abstracts_text}
 
-Output a GFM comparison table with one row per paper. Use exactly these columns:
+Output a GFM comparison table with one row per paper. Use EXACTLY these columns, in this order:
 
-| Paper Title | Methodology | Key Findings | Limitations/Gaps |
-|-------------|-------------|--------------|-----------------|"""
+| {header_cols} |
+|{divider}|"""
 
     return system, user
 
 
 async def synthesize_stream(
-    query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free"
+    query: str, level: str, papers: list, output_mode: str = "synthesis", tier: str = "free",
+    columns: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding synthesis text chunks as they arrive from the model.
 
+    ``columns`` are custom matrix extraction columns (Task 3.3), used in matrix mode.
     Appends the sources block after the stream completes (synthesis mode only).
     Raises SynthesisError on API failure so the caller can emit an SSE error event.
     """
@@ -191,8 +209,9 @@ async def synthesize_stream(
     # Stage B sees only as many top papers as fit the input-token budget.
     papers = _budget_papers(papers, query, level, output_mode)
     if output_mode == "matrix":
-        system, user = _build_matrix_prompt(query, papers)
-        max_tokens = 800
+        system, user = _build_matrix_prompt(query, papers, columns)
+        # More columns → wider rows → allow more output tokens.
+        max_tokens = 800 + 120 * len(columns or DEFAULT_MATRIX_COLUMNS)
     else:
         system, user = _build_prompt(query, level, papers)
         max_tokens = 1500

@@ -35,6 +35,29 @@ from library import (
 from account import purge_user_data
 
 
+# Custom matrix columns per tier (Task 3.3): column count is the Pro gate.
+MATRIX_COLUMN_CAP = {"anonymous": 2, "free": 2, "pro": 6, "lab": 6}
+
+
+def _sanitize_columns(columns, tier: str) -> list[str] | None:
+    """Trim, de-dupe, length-limit, and cap custom matrix columns by tier."""
+    if not columns:
+        return None
+    cap = MATRIX_COLUMN_CAP.get(tier, 2)
+    seen, out = set(), []
+    for c in columns:
+        if not isinstance(c, str):
+            continue
+        name = c.strip()[:40]
+        key = name.lower()
+        if name and key not in seen:
+            seen.add(key)
+            out.append(name)
+        if len(out) >= cap:
+            break
+    return out or None
+
+
 def _with_coverage(papers: list) -> list:
     """Attach an honest open-access coverage badge to each paper (Task 1.2).
 
@@ -103,6 +126,8 @@ class SearchRequest(BaseModel):
     # recency = one of "6m" | "1y" | "2y" | "all" (a since-year cutoff).
     categories: list[str] | None = None
     recency: str | None = None
+    # Custom comparison-matrix extraction columns (Task 3.3). Capped by tier.
+    columns: list[str] | None = None
 
 
 class WaitlistRequest(BaseModel):
@@ -430,8 +455,11 @@ async def search(payload: SearchRequest, request: Request):
             yield _sse({"type": "papers", "papers": top_papers,
                         "coverage_note": coverage_note(top_papers)})
 
+            matrix_columns = _sanitize_columns(payload.columns, tier) if output_mode == "matrix" else None
             try:
-                async for chunk in synthesize_stream(cleaned_query, level, top_papers, output_mode, tier):
+                async for chunk in synthesize_stream(
+                    cleaned_query, level, top_papers, output_mode, tier, columns=matrix_columns
+                ):
                     synthesis_parts.append(chunk)
                     yield _sse({"type": "text", "text": chunk})
             except SynthesisError as e:
