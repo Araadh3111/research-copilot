@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 
 from query_processor import process_query, validate_query
 from fetcher import fetch_pool, FetchError, RESULT_COUNT
+from arxiv_fetcher import recency_to_year
 from ranker import rank
 from synthesizer import synthesize_stream, verify_claim, SynthesisError
 from cache import normalize, get_cached, store_cache, stream_chunks
@@ -87,6 +88,10 @@ class SearchRequest(BaseModel):
     query: str
     level: str = "intermediate"
     output_mode: str = "synthesis"
+    # arXiv filters (Task 3.1). categories = arXiv categories e.g. ["cs.LG","cs.CL"];
+    # recency = one of "6m" | "1y" | "2y" | "all" (a since-year cutoff).
+    categories: list[str] | None = None
+    recency: str | None = None
 
 
 class WaitlistRequest(BaseModel):
@@ -224,6 +229,10 @@ async def search(payload: SearchRequest, request: Request):
     output_mode = payload.output_mode if payload.output_mode in ("synthesis", "matrix") else "synthesis"
     query_norm = normalize(raw_query)
 
+    # arXiv filters (Task 3.1): sanitize categories and resolve the recency cutoff.
+    categories = [c for c in (payload.categories or []) if isinstance(c, str)][:8] or None
+    since_year = recency_to_year(payload.recency)
+
     # ── Cost instrumentation (Task 2.1) ──────────────────────────────────────
     # Start a fresh per-request token accumulator and stopwatch. Every Anthropic
     # call below reports its real usage into cost_tracker; we write one
@@ -261,8 +270,16 @@ async def search(payload: SearchRequest, request: Request):
 
     # ── 1. Cache check (before quota — cache hits are instant and free) ───────
     # Cache hits replay stored text and never call Anthropic, so they don't
-    # consume a search. Matrix results are not cached — always fresh.
-    cached = await asyncio.to_thread(get_cached, query_norm, level) if output_mode == "synthesis" else None
+    # consume a search. Matrix results are not cached — always fresh. The query
+    # cache is keyed on (query, level) only, so a filtered search (arXiv
+    # categories / recency) must bypass it — otherwise it could replay an
+    # unfiltered result for a filtered request.
+    filters_active = bool(categories or since_year)
+    cached = (
+        await asyncio.to_thread(get_cached, query_norm, level)
+        if output_mode == "synthesis" and not filters_active
+        else None
+    )
     if cached:
         async def stream_from_cache():
             cached_papers = _with_coverage(cached["papers"])
@@ -364,7 +381,10 @@ async def search(payload: SearchRequest, request: Request):
             search_angles = processed["search_angles"]
 
             try:
-                pool = await asyncio.to_thread(fetch_pool, cleaned_query, search_angles)
+                pool = await asyncio.to_thread(
+                    fetch_pool, cleaned_query, search_angles,
+                    categories=categories, since_year=since_year,
+                )
             except FetchError as e:
                 yield _sse({"type": "error", "detail": str(e)})
                 return
@@ -397,7 +417,8 @@ async def search(payload: SearchRequest, request: Request):
                 return
 
             # Store in cache after successful synthesis (synthesis mode only).
-            if output_mode == "synthesis":
+            # Skip when filters are active — the cache key doesn't capture them.
+            if output_mode == "synthesis" and not filters_active:
                 full_synthesis = "".join(synthesis_parts)
                 await asyncio.to_thread(
                     store_cache, query_norm, level, full_synthesis, top_papers

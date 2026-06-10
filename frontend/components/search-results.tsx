@@ -339,6 +339,11 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                       {paper.coverage.label}
                     </span>
                   )}
+                  {paper.venue && paper.venue !== "arXiv" && (
+                    <span className="rounded-md bg-ink/5 px-2 py-0.5 font-medium text-ink dark:bg-parchment/20">
+                      {paper.venue}
+                    </span>
+                  )}
                   {typeof paper.year === "number" && (
                     <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-body">
                       {paper.year}

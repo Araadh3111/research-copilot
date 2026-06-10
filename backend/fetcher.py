@@ -1,11 +1,17 @@
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from dotenv import load_dotenv
 
+from arxiv_fetcher import fetch_arxiv
+
 load_dotenv()
+
+# arXiv results per search to merge into the Semantic Scholar pool (Task 3.1).
+ARXIV_RESULTS = int(os.getenv("ARXIV_RESULTS", "25"))
 
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -68,39 +74,84 @@ def _fetch_one(query: str, limit: int) -> list:
     )
 
 
-def fetch_pool(cleaned_query: str, search_angles: list[str], pool_size: int = POOL_SIZE) -> list:
-    """Fetch a deduplicated candidate pool across the cleaned query + all search angles.
+def _dedupe_key(paper: dict):
+    """Cross-source identity for a paper: arXiv id > DOI > paperId > title.
 
-    Requests to Semantic Scholar are fired in parallel (one thread per angle).
-    Papers without an abstract are excluded — they can't be content-ranked.
-    Returns raw S2 paper dicts; ranking is handled by ranker.py.
+    Lets us merge Semantic Scholar and arXiv results without listing the same
+    paper twice when both sources return it under different ids.
+    """
+    ids = paper.get("externalIds") or {}
+    ax = ids.get("ArXiv")
+    if ax:
+        return ("arxiv", re.sub(r"v\d+$", "", str(ax)))
+    doi = ids.get("DOI")
+    if doi:
+        return ("doi", str(doi).lower())
+    pid = paper.get("paperId")
+    if pid:
+        return ("pid", pid)
+    return ("title", (paper.get("title") or "").lower().strip())
+
+
+def fetch_pool(
+    cleaned_query: str,
+    search_angles: list[str],
+    pool_size: int = POOL_SIZE,
+    *,
+    categories=None,
+    since_year: int | None = None,
+    include_arxiv: bool = True,
+) -> list:
+    """Fetch a deduplicated candidate pool across the cleaned query + all angles.
+
+    Semantic Scholar queries and one arXiv query (Task 3.1) are fired in parallel.
+    Papers without an abstract are excluded — they can't be content-ranked. Results
+    are merged with cross-source dedup; ranking is handled by ranker.py.
     """
     queries = list(dict.fromkeys([cleaned_query] + search_angles))
 
-    # Parallel fetch: each query gets its own thread.
+    # Parallel fetch: each S2 query gets a thread, plus one arXiv future.
     angle_results: dict[str, list] = {}
-    with ThreadPoolExecutor(max_workers=len(queries)) as pool:
+    arxiv_papers: list = []
+    with ThreadPoolExecutor(max_workers=len(queries) + 1) as pool:
         future_to_query = {pool.submit(_fetch_one, q, pool_size): q for q in queries}
-        for future in as_completed(future_to_query):
+        arxiv_future = (
+            pool.submit(
+                fetch_arxiv, cleaned_query,
+                categories=categories, since_year=since_year, max_results=ARXIV_RESULTS,
+            )
+            if include_arxiv else None
+        )
+        for future in as_completed(list(future_to_query)):
             q = future_to_query[future]
             try:
                 angle_results[q] = future.result()
             except FetchError:
                 angle_results[q] = []  # one angle failing doesn't abort the pool
+        if arxiv_future is not None:
+            try:
+                arxiv_papers = arxiv_future.result()
+            except Exception:
+                arxiv_papers = []  # arXiv augments the pool; never let it break a search
 
-    # Merge in query order: cleaned_query first, then angles.
-    seen_ids: set = set()
+    # Merge: S2 first (carries citation counts), then arXiv. Cross-source dedup.
+    seen: set = set()
     pool_papers: list = []
+
+    def _add(paper: dict) -> None:
+        if not (paper.get("abstract") or "").strip():
+            return  # no abstract → can't content-rank
+        key = _dedupe_key(paper)
+        if key in seen:
+            return
+        seen.add(key)
+        pool_papers.append(paper)
 
     for q in queries:
         for paper in angle_results.get(q, []):
-            pid = paper.get("paperId")
-            if not pid or pid in seen_ids:
-                continue
-            if not (paper.get("abstract") or "").strip():
-                continue  # no abstract → can't content-rank, skip
-            seen_ids.add(pid)
-            pool_papers.append(paper)
+            _add(paper)
+    for paper in arxiv_papers:
+        _add(paper)
 
     return pool_papers
 

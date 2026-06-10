@@ -40,6 +40,22 @@ type QuotaError = {
   is_trial?: boolean
 }
 
+// arXiv category quick-picks (Task 3.1) — the ML wedge's home turf.
+const ARXIV_CATEGORIES: { value: string; label: string }[] = [
+  { value: "cs.LG", label: "ML" },
+  { value: "cs.CL", label: "NLP" },
+  { value: "cs.CV", label: "Vision" },
+  { value: "cs.AI", label: "AI" },
+  { value: "stat.ML", label: "Stats·ML" },
+]
+
+const RECENCY_OPTIONS: { value: string; label: string }[] = [
+  { value: "all", label: "Any time" },
+  { value: "6m", label: "Last 6 months" },
+  { value: "1y", label: "Last year" },
+  { value: "2y", label: "Last 2 years" },
+]
+
 // Map low-level fetch/network failures to a friendly message instead of leaking
 // the browser's raw text (iOS Safari throws "Load failed"; Chrome "Failed to
 // fetch"). Anything else (a real API message) is passed through untouched.
@@ -67,6 +83,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [quotaError, setQuotaError] = useState<QuotaError | null>(null)
   const [papers, setPapers] = useState<Paper[]>([])
   const [coverageNote, setCoverageNote] = useState("")
+  // arXiv filters (Task 3.1): category quick-picks + recency window.
+  const [categories, setCategories] = useState<string[]>([])
+  const [recency, setRecency] = useState<string>("all")
   const [synthesis, setSynthesis] = useState("")
   const [submittedQuery, setSubmittedQuery] = useState("")
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
@@ -87,6 +106,10 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const writingRef = useRef<HTMLTextAreaElement | null>(null)
 
   const isPro = tier === "pro" || tier === "lab"
+
+  function toggleCategory(c: string) {
+    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
+  }
 
   // Format a paper as an inline parenthetical citation, e.g. "(Doudna et al., 2023)".
   function formatCitation(paper: Paper): string {
@@ -166,7 +189,13 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ query: queryStr, level: levelStr, output_mode: mode }),
+        body: JSON.stringify({
+          query: queryStr,
+          level: levelStr,
+          output_mode: mode,
+          categories: categories.length ? categories : null,
+          recency: recency !== "all" ? recency : null,
+        }),
       })
 
       if (!res.ok) {
@@ -482,6 +511,43 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-stone" />
+          </div>
+
+          {/* arXiv filters — category quick-picks + recency window (Task 3.1) */}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="ms-label mr-0.5 text-[11px] tracking-[0.1em] text-stone-light">arXiv</span>
+            {ARXIV_CATEGORIES.map((c) => {
+              const on = categories.includes(c.value)
+              return (
+                <button
+                  type="button"
+                  key={c.value}
+                  onClick={() => toggleCategory(c.value)}
+                  aria-pressed={on}
+                  title={c.value}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    on
+                      ? "border-gold/40 bg-gold/15 text-gold"
+                      : "border-line bg-cream text-stone hover:border-line-strong hover:text-ink"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              )
+            })}
+            <div className="relative ml-auto">
+              <select
+                value={recency}
+                onChange={(e) => setRecency(e.target.value)}
+                aria-label="Recency"
+                className="h-8 cursor-pointer appearance-none rounded-full border border-line bg-cream pl-3 pr-7 text-xs text-stone outline-none transition-colors hover:border-line-strong hover:text-ink"
+              >
+                {RECENCY_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-stone" />
+            </div>
           </div>
         </form>
 
