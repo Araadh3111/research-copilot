@@ -20,7 +20,7 @@ export type Paper = {
   venue?: string | null
   externalIds?: { DOI?: string | null } | null
   abstract?: string | null
-  coverage?: { badge: "full_text" | "abstract"; label: string; source?: string | null } | null
+  coverage?: { badge: "full_text" | "abstract" | "library"; label: string; source?: string | null } | null
 }
 
 // ── Helpers for the matrix heatmap + research-gap extraction ────────────────
@@ -324,17 +324,19 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone">
                   {paper.coverage && (
                     <span
-                      title="Synthesis reads abstracts + metadata; open-access papers also have full text you can open in one click."
+                      title="Synthesis reads abstracts + metadata; open-access papers also have full text you can open in one click. 'Your library' papers are your own private uploads."
                       className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium ${
-                        paper.coverage.badge === "full_text"
-                          ? "bg-gold/15 text-gold"
-                          : "bg-parchment text-stone"
+                        paper.coverage.badge === "library"
+                          ? "bg-ink/10 text-ink dark:bg-parchment/25"
+                          : paper.coverage.badge === "full_text"
+                            ? "bg-gold/15 text-gold"
+                            : "bg-parchment text-stone"
                       }`}
                     >
-                      {paper.coverage.badge === "full_text" ? (
-                        <BookOpen className="size-3" />
-                      ) : (
+                      {paper.coverage.badge === "abstract" ? (
                         <FileText className="size-3" />
+                      ) : (
+                        <BookOpen className="size-3" />
                       )}
                       {paper.coverage.label}
                     </span>

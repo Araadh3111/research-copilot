@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X, PenLine, Command } from "lucide-react"
+import { Search, ChevronDown, Loader2, ArrowRight, Lock, Zap, X, PenLine, Command, BookOpen } from "lucide-react"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ResearchLoader } from "@/components/research-loader"
@@ -418,6 +418,15 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </a>
           <div className="flex items-center gap-3 sm:gap-4">
             {userEmail && <span className="hidden text-sm text-stone-light sm:block">{userEmail}</span>}
+            <a
+              href="/library"
+              aria-label="Your library"
+              title="Your library"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-cream px-2.5 py-1.5 text-sm text-stone transition-colors hover:border-line-strong hover:text-ink sm:px-3"
+            >
+              <BookOpen className="size-3.5" />
+              <span className="hidden sm:inline">Library</span>
+            </a>
             {hasResults && (
               <button
                 type="button"
