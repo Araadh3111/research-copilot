@@ -13,8 +13,8 @@ MODEL = "claude-haiku-4-5-20251001"
 # input dwarfed synthesis and it became the most expensive stage. We now do a
 # free lexical pre-filter to the top LLM_RANK_LIMIT candidates and send only short
 # abstracts to Haiku. Both are env-tunable.
-LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "25"))
-ABSTRACT_WORD_LIMIT = int(os.getenv("RANK_ABSTRACT_WORD_LIMIT", "60"))
+LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "15"))
+ABSTRACT_WORD_LIMIT = int(os.getenv("RANK_ABSTRACT_WORD_LIMIT", "50"))
 
 # Use the cached paper-embedding semantic pre-filter (Task 2.2) instead of the
 # lexical one. OFF by default — turn on only after validating no regression with
