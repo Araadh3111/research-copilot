@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -28,11 +28,21 @@ from supabase_client import sb
 import cost_tracker
 from costs import log_search_cost, cost_dashboard
 from sources import coverage_dict, coverage_note
+from library import (
+    add_document, list_documents, delete_document, delete_all_documents,
+    count_documents, search_library, storage_cap, LibraryError,
+)
+from account import purge_user_data
 
 
 def _with_coverage(papers: list) -> list:
-    """Attach an honest open-access coverage badge to each paper (Task 1.2)."""
+    """Attach an honest open-access coverage badge to each paper (Task 1.2).
+
+    Library papers already carry a 'Your library' badge — leave it untouched.
+    """
     for p in papers:
+        if p.get("source") == "library":
+            continue
         p["coverage"] = coverage_dict(p)
     return papers
 
@@ -386,6 +396,17 @@ async def search(payload: SearchRequest, request: Request):
                     fetch_pool, cleaned_query, search_angles,
                     categories=categories, since_year=since_year,
                 )
+
+                # Merge the user's private library (Task 1.3) when they have one,
+                # so their own papers can be cited alongside public results. Guarded
+                # by a doc count so users without a library skip the embedding call.
+                if user_id:
+                    try:
+                        if await asyncio.to_thread(count_documents, user_id):
+                            lib = await asyncio.to_thread(search_library, user_id, cleaned_query)
+                            pool = lib + pool
+                    except Exception as e:
+                        print(f"[library] merge skipped: {type(e).__name__}: {e}", flush=True)
             except FetchError as e:
                 yield _sse({"type": "error", "detail": str(e)})
                 return
@@ -530,6 +551,75 @@ async def usage(request: Request):
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
     tier = await asyncio.to_thread(get_tier, user_id)
     return await asyncio.to_thread(usage_summary, user_id, tier)
+
+
+# ── BYO-PDF library (Task 1.3) ────────────────────────────────────────────────
+
+async def _require_user(request: Request) -> str | None:
+    jwt_token = _extract_jwt(request)
+    return await asyncio.to_thread(verify_jwt, jwt_token) if jwt_token else None
+
+
+@app.get("/library")
+async def library_list(request: Request):
+    """List the caller's uploaded papers + their storage quota."""
+    user_id = await _require_user(request)
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    tier = await asyncio.to_thread(get_tier, user_id)
+    docs = await asyncio.to_thread(list_documents, user_id)
+    return {"documents": docs, "count": len(docs), "cap": storage_cap(tier), "tier": tier}
+
+
+@app.post("/library/upload")
+async def library_upload(request: Request, file: UploadFile = File(...)):
+    """Upload a PDF → extract, chunk, embed, store privately in the user's library."""
+    user_id = await _require_user(request)
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    tier = await asyncio.to_thread(get_tier, user_id)
+    data = await file.read()
+    try:
+        doc = await asyncio.to_thread(
+            add_document, user_id, tier, data=data, filename=file.filename, title=None
+        )
+    except LibraryError as e:
+        return JSONResponse(status_code=400, content={"error": "library_error", "message": str(e)})
+    return doc
+
+
+@app.delete("/library/{doc_id}")
+async def library_delete(doc_id: str, request: Request):
+    """Delete a library document and its embedded chunks (owner-scoped)."""
+    user_id = await _require_user(request)
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    ok = await asyncio.to_thread(delete_document, user_id, doc_id)
+    return {"deleted": ok}
+
+
+@app.delete("/library")
+async def library_delete_all(request: Request):
+    """Delete ALL of the caller's library documents (data deletion)."""
+    user_id = await _require_user(request)
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    ok = await asyncio.to_thread(delete_all_documents, user_id)
+    return {"deleted": ok}
+
+
+@app.delete("/account")
+async def account_delete(request: Request):
+    """Right to erasure: wipe all of the caller's data and their account.
+
+    Removes library docs/chunks, search history, usage/cost rows, profile, and the
+    auth account itself. Irreversible.
+    """
+    user_id = await _require_user(request)
+    if not user_id:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    result = await asyncio.to_thread(purge_user_data, user_id, delete_account=True)
+    return result
 
 
 # Bump this when you want to confirm a deploy actually shipped. If /admin/key-status
