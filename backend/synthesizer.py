@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 from fetcher import fetch_papers
 
 import cost_tracker
+from budgets import (
+    select_within_budget,
+    SYNTHESIS_MAX_INPUT_TOKENS,
+    MATRIX_MAX_INPUT_TOKENS,
+)
 
 load_dotenv()
 
@@ -66,6 +71,23 @@ def _build_sources(papers, top=5):
         else:
             lines.append(f"- {title} — {year}, {citations} citations")
     return "\n".join(lines)
+
+
+def _budget_papers(papers: list, query: str, level: str, output_mode: str) -> list:
+    """Trim the paper set so the Stage-B (Sonnet) input fits its token budget.
+
+    Builds the prompt scaffolding with zero papers to estimate fixed overhead,
+    then selects top papers in rank order until the budget binds. Degrades
+    gracefully to fewer papers rather than failing or overspending.
+    """
+    if output_mode == "matrix":
+        base_sys, base_user = _build_matrix_prompt(query, [])
+        budget = MATRIX_MAX_INPUT_TOKENS
+    else:
+        base_sys, base_user = _build_prompt(query, level, [])
+        budget = SYNTHESIS_MAX_INPUT_TOKENS
+    chosen, _ = select_within_budget(papers, base_sys + base_user, budget)
+    return chosen
 
 
 def _build_prompt(query: str, level: str, papers: list) -> tuple[str, str]:
@@ -166,6 +188,8 @@ async def synthesize_stream(
         yield f'No papers were found for "{query}". Try a broader or differently-worded query.'
         return
 
+    # Stage B sees only as many top papers as fit the input-token budget.
+    papers = _budget_papers(papers, query, level, output_mode)
     if output_mode == "matrix":
         system, user = _build_matrix_prompt(query, papers)
         max_tokens = 800
@@ -267,6 +291,7 @@ def synthesize(query: str, level: str, papers: list, output_mode: str = "synthes
             "Try a broader or differently-worded query."
         )
 
+    papers = _budget_papers(papers, query, level, output_mode)
     if output_mode == "matrix":
         system, user = _build_matrix_prompt(query, papers)
         max_tokens = 800
