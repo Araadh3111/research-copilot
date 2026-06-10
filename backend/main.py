@@ -554,6 +554,46 @@ async def admin_costs(request: Request):
     return await asyncio.to_thread(cost_dashboard, days)
 
 
+@app.get("/admin/embed-check")
+async def admin_embed_check(request: Request):
+    """Verify local embeddings actually deploy + boot on Railway (torch sanity check).
+
+    Triggers a REAL embedding call — loads the sentence-transformers model and
+    embeds a string — so it proves torch installed and the model fits in memory.
+    Guarded by ADMIN_KEY (X-Admin-Key header or ?key=). If torch failed to install
+    the whole backend wouldn't deploy; if it OOMs on model load this returns 500
+    with the error, which is the signal to swap embeddings.py to a hosted backend.
+    """
+    admin_key = os.getenv("ADMIN_KEY")
+    if not admin_key:
+        return JSONResponse(status_code=503, content={"error": "admin_disabled",
+            "message": "Set ADMIN_KEY in the backend env to enable /admin endpoints."})
+    supplied = request.headers.get("x-admin-key") or request.query_params.get("key")
+    if supplied != admin_key:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    import embeddings
+    if not embeddings.is_available():
+        return JSONResponse(status_code=500, content={
+            "available": False,
+            "error": "sentence-transformers not importable — dependency missing or build failed",
+        })
+    t = time.monotonic()
+    try:
+        vec = await asyncio.to_thread(embeddings.embed_query, "researca embedding deploy check")
+        return {
+            "available": True,
+            "model": embeddings.MODEL_NAME,
+            "dim": len(vec),
+            "expected_dim": embeddings.EMBED_DIM,
+            "load_and_embed_ms": int((time.monotonic() - t) * 1000),
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "available": False, "error": f"{type(e).__name__}: {e}",
+        })
+
+
 @app.get("/auth/debug")
 async def auth_debug(http_request: Request):
     """Resolve the caller's identity from their bearer token — no search, no cost.
