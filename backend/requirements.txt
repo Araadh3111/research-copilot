@@ -9,3 +9,5 @@ starlette==0.38.6
 supabase>=2.15.0
 PyJWT[crypto]>=2.8.0
 slowapi>=0.1.9
+# Local text embeddings for pgvector (no external API key). ~80MB model on CPU.
+sentence-transformers>=3.0.0
