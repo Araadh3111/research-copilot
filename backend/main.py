@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -531,21 +532,45 @@ async def usage(request: Request):
     return await asyncio.to_thread(usage_summary, user_id, tier)
 
 
-@app.get("/admin/costs")
-async def admin_costs(request: Request):
-    """Internal cost dashboard (Task 2.1): cost/search p50/p95, daily burn, by stage.
+def _admin_guard(request: Request):
+    """Return None if the caller is an authorized admin, else a JSONResponse.
 
-    Guarded by the ADMIN_KEY env var, supplied via the X-Admin-Key header or an
-    ?key= query param. If ADMIN_KEY is unset the endpoint is disabled (503) so it
-    can never be left wide open by accident.
+    Auth = the ADMIN_KEY env var, supplied via the X-Admin-Key header or ?key=.
+    Surrounding whitespace is stripped on BOTH sides so a trailing newline pasted
+    into the Railway value (or the shell) doesn't cause a spurious 401. Unset key
+    → 503 (endpoint disabled). Add ?debug=1 to a failing request to get a SAFE
+    comparison (lengths + short SHA-256 fingerprints) that never reveals the key.
     """
-    admin_key = os.getenv("ADMIN_KEY")
+    admin_key = (os.getenv("ADMIN_KEY") or "").strip()
     if not admin_key:
         return JSONResponse(status_code=503, content={"error": "admin_disabled",
-            "message": "Set ADMIN_KEY in the backend env to enable /admin/costs."})
-    supplied = request.headers.get("x-admin-key") or request.query_params.get("key")
-    if supplied != admin_key:
-        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+            "message": "Set ADMIN_KEY in the backend env to enable /admin endpoints."})
+    raw = request.headers.get("x-admin-key") or request.query_params.get("key") or ""
+    supplied = raw.strip()
+    if supplied == admin_key:
+        return None
+    if request.query_params.get("debug") == "1":
+        def fp(s: str) -> str:
+            return hashlib.sha256(s.encode()).hexdigest()[:8]
+        return JSONResponse(status_code=401, content={"error": "unauthorized", "debug": {
+            "env_admin_key_len": len(admin_key),
+            "supplied_len": len(supplied),
+            "supplied_len_before_strip": len(raw),
+            "env_fingerprint": fp(admin_key),
+            "supplied_fingerprint": fp(supplied),
+            "supplied_via": "header" if request.headers.get("x-admin-key") else "query",
+            "hint": "equal len + equal fingerprint ⇒ a match; differing len ⇒ whitespace or "
+                    "URL-encoding mangled the key (prefer the X-Admin-Key header for keys with +,&,#,%).",
+        }})
+    return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+
+@app.get("/admin/costs")
+async def admin_costs(request: Request):
+    """Internal cost dashboard (Task 2.1): cost/search p50/p95, daily burn, by stage."""
+    guard = _admin_guard(request)
+    if guard is not None:
+        return guard
     try:
         days = int(request.query_params.get("days", "14"))
     except ValueError:
@@ -564,13 +589,9 @@ async def admin_embed_check(request: Request):
     the whole backend wouldn't deploy; if it OOMs on model load this returns 500
     with the error, which is the signal to swap embeddings.py to a hosted backend.
     """
-    admin_key = os.getenv("ADMIN_KEY")
-    if not admin_key:
-        return JSONResponse(status_code=503, content={"error": "admin_disabled",
-            "message": "Set ADMIN_KEY in the backend env to enable /admin endpoints."})
-    supplied = request.headers.get("x-admin-key") or request.query_params.get("key")
-    if supplied != admin_key:
-        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    guard = _admin_guard(request)
+    if guard is not None:
+        return guard
 
     import embeddings
     if not embeddings.is_available():
