@@ -1,13 +1,51 @@
 import json
+import os
+import re
 import anthropic
 from fetcher import RESULT_COUNT
 
 import cost_tracker
 
 MODEL = "claude-haiku-4-5-20251001"
-ABSTRACT_WORD_LIMIT = 120
+
+# Ranking is the cheap stage by design, but it was scoring the WHOLE deduplicated
+# pool (cleaned query + every angle, ~100-200 abstracts) in one call — so its
+# input dwarfed synthesis and it became the most expensive stage. We now do a
+# free lexical pre-filter to the top LLM_RANK_LIMIT candidates and send only short
+# abstracts to Haiku. Both are env-tunable.
+LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "25"))
+ABSTRACT_WORD_LIMIT = int(os.getenv("RANK_ABSTRACT_WORD_LIMIT", "60"))
 
 _client = anthropic.Anthropic(timeout=20.0)
+
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "with", "by",
+    "is", "are", "be", "how", "what", "study", "using", "based", "via",
+}
+
+
+def _tokenize(text: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in _STOPWORDS and len(w) > 2}
+
+
+def _prefilter(query: str, pool: list, limit: int) -> list:
+    """Cheaply trim the pool to the `limit` most query-relevant papers (no LLM).
+
+    Scores each paper by query-term overlap in title+abstract, with citation
+    count as a tiebreaker. Keeps the LLM ranker's input small without dropping
+    likely-relevant papers. Returns the whole pool unchanged when it already fits.
+    """
+    if len(pool) <= limit:
+        return pool
+    qterms = _tokenize(query)
+    if not qterms:
+        return sorted(pool, key=lambda p: p.get("citationCount") or 0, reverse=True)[:limit]
+
+    def score(paper):
+        terms = _tokenize((paper.get("title") or "") + " " + (paper.get("abstract") or ""))
+        return (len(qterms & terms), paper.get("citationCount") or 0)
+
+    return sorted(pool, key=score, reverse=True)[:limit]
 
 _SYSTEM = "You are a relevance scorer. Output only JSON — no prose, no explanation."
 
@@ -43,6 +81,9 @@ def rank(original_query: str, pool: list, result_count: int = RESULT_COUNT) -> l
     if not pool:
         return []
 
+    # Only LLM-score the most query-relevant candidates — keeps Haiku input small.
+    candidates = _prefilter(original_query, pool, LLM_RANK_LIMIT)
+
     # Build the compact paper list sent to the model.
     paper_items = [
         {
@@ -50,7 +91,7 @@ def rank(original_query: str, pool: list, result_count: int = RESULT_COUNT) -> l
             "title": (p.get("title") or "").strip(),
             "abstract": _truncate((p.get("abstract") or "").strip()),
         }
-        for p in pool
+        for p in candidates
         if p.get("paperId")
     ]
 
