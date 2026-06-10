@@ -532,6 +532,33 @@ async def usage(request: Request):
     return await asyncio.to_thread(usage_summary, user_id, tier)
 
 
+# Bump this when you want to confirm a deploy actually shipped. If /admin/key-status
+# returns an older marker (or 404), Railway is still serving stale code — likely a
+# failed build (e.g. torch too large), which is the real cause of a "stuck" 401.
+BUILD_MARKER = "embed-check+keystatus-2026-06-10"
+
+
+@app.get("/admin/key-status")
+async def admin_key_status():
+    """UNAUTHENTICATED, value-free check: does the server actually see ADMIN_KEY?
+
+    Reveals only whether the var is set, its length, and an 8-char SHA-256
+    fingerprint (never the value) — enough to confirm Railway is injecting it and
+    to compare against the key you set, without leaking the secret. The build
+    marker confirms which code is live. Remove this endpoint once debugged.
+    """
+    raw = os.getenv("ADMIN_KEY")
+    key = (raw or "").strip()
+    fp = hashlib.sha256(key.encode()).hexdigest()[:8] if key else None
+    return {
+        "build": BUILD_MARKER,
+        "admin_key_set": bool(raw),
+        "admin_key_len": len(key),
+        "admin_key_len_before_strip": len(raw) if raw else 0,
+        "admin_key_fingerprint": fp,
+    }
+
+
 def _admin_guard(request: Request):
     """Return None if the caller is an authorized admin, else a JSONResponse.
 
