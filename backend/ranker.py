@@ -16,6 +16,11 @@ MODEL = "claude-haiku-4-5-20251001"
 LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "25"))
 ABSTRACT_WORD_LIMIT = int(os.getenv("RANK_ABSTRACT_WORD_LIMIT", "60"))
 
+# Use the cached paper-embedding semantic pre-filter (Task 2.2) instead of the
+# lexical one. OFF by default — turn on only after validating no regression with
+# evals/run_eval.py, since it changes which candidates reach the LLM ranker.
+SEMANTIC_PREFILTER = os.getenv("SEMANTIC_PREFILTER", "false").lower() == "true"
+
 _client = anthropic.Anthropic(timeout=20.0)
 
 _STOPWORDS = {
@@ -37,6 +42,17 @@ def _prefilter(query: str, pool: list, limit: int) -> list:
     """
     if len(pool) <= limit:
         return pool
+
+    # Semantic pre-filter (cached embeddings) when enabled; lexical fallback below.
+    if SEMANTIC_PREFILTER:
+        try:
+            import paper_cache
+            chosen = paper_cache.semantic_prefilter(query, pool, limit)
+            if chosen:
+                return chosen
+        except Exception as e:
+            print(f"[rank] semantic prefilter fell back to lexical: {type(e).__name__}: {e}", flush=True)
+
     qterms = _tokenize(query)
     if not qterms:
         return sorted(pool, key=lambda p: p.get("citationCount") or 0, reverse=True)[:limit]
