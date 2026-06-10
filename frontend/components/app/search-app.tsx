@@ -352,6 +352,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   function newReview() {
     setQuery("")
     setPapers([])
+    setCoverageNote("")
     setSynthesis("")
     setSubmittedQuery("")
     setOutputMode("synthesis")
@@ -388,6 +389,18 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           </a>
           <div className="flex items-center gap-3 sm:gap-4">
             {userEmail && <span className="hidden text-sm text-stone-light sm:block">{userEmail}</span>}
+            {hasResults && (
+              <button
+                type="button"
+                onClick={newReview}
+                aria-label="Start a new search"
+                title="New search"
+                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-cream px-2.5 py-1.5 text-sm text-stone transition-colors hover:border-line-strong hover:text-ink sm:px-3"
+              >
+                <Search className="size-3.5" />
+                <span className="hidden sm:inline">New search</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
