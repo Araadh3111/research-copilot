@@ -86,6 +86,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   // arXiv filters (Task 3.1): category quick-picks + recency window.
   const [categories, setCategories] = useState<string[]>([])
   const [recency, setRecency] = useState<string>("all")
+  // Custom comparison-matrix columns (Task 3.3). Free capped at 2, Pro at 6.
+  const [matrixColumns, setMatrixColumns] = useState<string[]>([])
+  const [columnInput, setColumnInput] = useState("")
   const [synthesis, setSynthesis] = useState("")
   const [submittedQuery, setSubmittedQuery] = useState("")
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
@@ -195,6 +198,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
           output_mode: mode,
           categories: categories.length ? categories : null,
           recency: recency !== "all" ? recency : null,
+          columns: mode === "matrix" && matrixColumns.length ? matrixColumns : null,
         }),
       })
 
@@ -320,6 +324,25 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
     if (mode === outputMode || !submittedQuery || loading) return
     setOutputMode(mode)
     await runSearch(submittedQuery, level, mode)
+  }
+
+  // Custom matrix columns (Task 3.3). Pro is capped at 6 (mirrors backend
+  // MATRIX_COLUMN_CAP); free can't reach this UI since matrix is Pro-gated.
+  const MAX_MATRIX_COLUMNS = 6
+
+  function addColumn() {
+    const name = columnInput.trim().slice(0, 40)
+    if (!name || matrixColumns.length >= MAX_MATRIX_COLUMNS) return
+    if (matrixColumns.some((c) => c.toLowerCase() === name.toLowerCase())) {
+      setColumnInput("")
+      return
+    }
+    setMatrixColumns((cols) => [...cols, name])
+    setColumnInput("")
+  }
+
+  function removeColumn(name: string) {
+    setMatrixColumns((cols) => cols.filter((c) => c !== name))
   }
 
   async function handleLogout() {
@@ -697,6 +720,74 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               {writingMode ? "Exit writing" : "Write"}
               {!isPro && !writingMode && <Lock className="size-3" />}
             </button>
+          </div>
+        )}
+
+        {/* Custom matrix columns (Task 3.3) — define what each row extracts. */}
+        {hasResults && outputMode === "matrix" && isPro && (
+          <div className="mx-auto mt-4 w-full max-w-2xl rounded-2xl border border-line bg-cream p-4 text-left">
+            <p className="ms-label mb-2 text-stone">
+              Extraction columns
+              <span className="ml-1 normal-case tracking-normal text-stone-light">
+                — leave empty for methodology / findings / limitations
+              </span>
+            </p>
+            {matrixColumns.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {matrixColumns.map((col) => (
+                  <span
+                    key={col}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line bg-parchment px-3 py-1 text-sm text-ink"
+                  >
+                    {col}
+                    <button
+                      type="button"
+                      onClick={() => removeColumn(col)}
+                      aria-label={`Remove ${col}`}
+                      className="text-stone-light transition-colors hover:text-ink"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={columnInput}
+                onChange={(e) => setColumnInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    addColumn()
+                  }
+                }}
+                placeholder="e.g. dataset used, sample size, reported accuracy"
+                maxLength={40}
+                disabled={matrixColumns.length >= MAX_MATRIX_COLUMNS || loading}
+                className="min-w-0 flex-1 rounded-full border border-line bg-parchment px-4 py-2 text-sm text-ink placeholder:text-stone-light focus:border-line-strong focus:outline-none disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={addColumn}
+                disabled={!columnInput.trim() || matrixColumns.length >= MAX_MATRIX_COLUMNS || loading}
+                className="rounded-full border border-line bg-cream px-4 py-2 text-sm font-medium text-stone transition-colors hover:border-line-strong hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => runSearch(submittedQuery, level, "matrix")}
+                disabled={loading}
+                className="rounded-full bg-ink px-5 py-2 text-sm font-medium text-cream transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Rebuild matrix
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-stone-light">
+              {matrixColumns.length} / {MAX_MATRIX_COLUMNS} columns
+            </p>
           </div>
         )}
 
