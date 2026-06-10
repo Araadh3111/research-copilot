@@ -66,6 +66,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
   const [invalidQuery, setInvalidQuery] = useState<string | null>(null)
   const [quotaError, setQuotaError] = useState<QuotaError | null>(null)
   const [papers, setPapers] = useState<Paper[]>([])
+  const [coverageNote, setCoverageNote] = useState("")
   const [synthesis, setSynthesis] = useState("")
   const [submittedQuery, setSubmittedQuery] = useState("")
   const [quota, setQuota] = useState<QuotaInfo | null>(null)
@@ -152,6 +153,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
     setInvalidQuery(null)
     setQuotaError(null)
     setPapers([])
+    setCoverageNote("")
     setSynthesis("")
 
     try {
@@ -235,6 +237,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
 
           if (event.type === "papers") {
             setPapers((event.papers as Paper[]) ?? [])
+            setCoverageNote(typeof event.coverage_note === "string" ? event.coverage_note : "")
           } else if (event.type === "text") {
             setSynthesis((prev) => prev + ((event.text as string) ?? ""))
           } else if (event.type === "quota") {
@@ -620,6 +623,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             streaming={streaming}
             outputMode={outputMode}
             shareable
+            coverageNote={coverageNote}
           />
         )}
 
@@ -634,6 +638,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
                 streaming={streaming}
                 outputMode={outputMode}
                 shareable
+                coverageNote={coverageNote}
                 onInsertCitation={isPro ? insertCitation : undefined}
               />
             </div>

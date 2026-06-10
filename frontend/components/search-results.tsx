@@ -20,6 +20,7 @@ export type Paper = {
   venue?: string | null
   externalIds?: { DOI?: string | null } | null
   abstract?: string | null
+  coverage?: { badge: "full_text" | "abstract"; label: string; source?: string | null } | null
 }
 
 // ── Helpers for the matrix heatmap + research-gap extraction ────────────────
@@ -71,6 +72,8 @@ type Props = {
   shareable?: boolean
   /** When set (Pro writing mode), each paper shows an "Insert citation" button. */
   onInsertCitation?: (paper: Paper) => void
+  /** Honest coverage line, e.g. "Synthesized from 5 papers (abstracts + metadata)…". */
+  coverageNote?: string
 }
 
 function numberFmt(n: number): string {
@@ -79,7 +82,7 @@ function numberFmt(n: number): string {
 
 type ShareState = "idle" | "loading" | "copied" | "error"
 
-export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis", shareable = false, onInsertCitation }: Props) {
+export function SearchResults({ query, papers, synthesis, streaming, outputMode = "synthesis", shareable = false, onInsertCitation, coverageNote }: Props) {
   const hasSynthesis = synthesis.trim().length > 0
   const isMatrix = outputMode === "matrix"
   const gaps = isMatrix ? [] : extractGaps(synthesis)
@@ -297,6 +300,9 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               Sources <span className="font-sans text-sm font-normal text-stone">({papers.length})</span>
             </h2>
           </div>
+          {coverageNote && (
+            <p className="-mt-2 mb-4 text-xs text-stone-light">{coverageNote}</p>
+          )}
           <div className="space-y-2.5">
             {papers.map((paper, i) => {
               const title = paper.title?.trim() || paper.url || `Paper ${i + 1}`
@@ -316,6 +322,23 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
 
               const footer = (
                 <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone">
+                  {paper.coverage && (
+                    <span
+                      title="Synthesis reads abstracts + metadata; open-access papers also have full text you can open in one click."
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium ${
+                        paper.coverage.badge === "full_text"
+                          ? "bg-gold/15 text-gold"
+                          : "bg-parchment text-stone"
+                      }`}
+                    >
+                      {paper.coverage.badge === "full_text" ? (
+                        <BookOpen className="size-3" />
+                      ) : (
+                        <FileText className="size-3" />
+                      )}
+                      {paper.coverage.label}
+                    </span>
+                  )}
                   {typeof paper.year === "number" && (
                     <span className="rounded-md bg-parchment px-2 py-0.5 font-medium text-body">
                       {paper.year}

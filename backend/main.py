@@ -25,6 +25,14 @@ from synthesizer import FORCE_SONNET
 from supabase_client import sb
 import cost_tracker
 from costs import log_search_cost, cost_dashboard
+from sources import coverage_dict, coverage_note
+
+
+def _with_coverage(papers: list) -> list:
+    """Attach an honest open-access coverage badge to each paper (Task 1.2)."""
+    for p in papers:
+        p["coverage"] = coverage_dict(p)
+    return papers
 
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -257,7 +265,9 @@ async def search(payload: SearchRequest, request: Request):
     cached = await asyncio.to_thread(get_cached, query_norm, level) if output_mode == "synthesis" else None
     if cached:
         async def stream_from_cache():
-            yield _sse({"type": "papers", "papers": cached["papers"]})
+            cached_papers = _with_coverage(cached["papers"])
+            yield _sse({"type": "papers", "papers": cached_papers,
+                        "coverage_note": coverage_note(cached_papers)})
             for chunk in stream_chunks(cached["synthesis"]):
                 yield _sse({"type": "text", "text": chunk})
             yield _sse({"type": "done"})
@@ -374,7 +384,9 @@ async def search(payload: SearchRequest, request: Request):
             papers_count = len(top_papers)
 
             # Papers arrive immediately — sources visible while synthesis streams.
-            yield _sse({"type": "papers", "papers": top_papers})
+            top_papers = _with_coverage(top_papers)
+            yield _sse({"type": "papers", "papers": top_papers,
+                        "coverage_note": coverage_note(top_papers)})
 
             try:
                 async for chunk in synthesize_stream(cleaned_query, level, top_papers, output_mode, tier):
