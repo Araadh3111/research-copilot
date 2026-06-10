@@ -1,6 +1,8 @@
 import json
 import anthropic
 
+import cost_tracker
+
 # Supporting step — always Haiku regardless of tier. Query cleanup and angle
 # generation are cheap, mechanical transforms that don't benefit from Sonnet;
 # only the user-facing synthesis uses tier-based model selection.
@@ -54,6 +56,7 @@ def validate_query(raw_query: str) -> bool:
             system=_VALIDATE_SYSTEM,
             messages=[{"role": "user", "content": f'Input: "{raw_query}"'}],
         )
+        cost_tracker.record_usage("query_validate", MODEL_HAIKU, msg.usage)
         text = msg.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
@@ -78,6 +81,7 @@ def process_query(raw_query: str, tier: str = "free") -> dict:
             system=_SYSTEM,
             messages=[{"role": "user", "content": _USER_TMPL.format(query=raw_query)}],
         )
+        cost_tracker.record_usage("query_process", MODEL_HAIKU, msg.usage)
         text = msg.content[0].text.strip()
         # Strip accidental markdown fences if the model adds them.
         if text.startswith("```"):

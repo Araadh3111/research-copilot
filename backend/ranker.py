@@ -2,6 +2,8 @@ import json
 import anthropic
 from fetcher import RESULT_COUNT
 
+import cost_tracker
+
 MODEL = "claude-haiku-4-5-20251001"
 ABSTRACT_WORD_LIMIT = 120
 
@@ -68,6 +70,7 @@ def rank(original_query: str, pool: list, result_count: int = RESULT_COUNT) -> l
                 }
             ],
         )
+        cost_tracker.record_usage("rank", MODEL, msg.usage)
         text = msg.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]

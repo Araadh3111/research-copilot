@@ -5,6 +5,8 @@ import anthropic
 from dotenv import load_dotenv
 from fetcher import fetch_papers
 
+import cost_tracker
+
 load_dotenv()
 
 # FORCE_SONNET=true (default) → everyone gets Sonnet during professor validation.
@@ -183,6 +185,13 @@ async def synthesize_stream(
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+            # Real token usage is only final once the stream completes.
+            try:
+                final = await stream.get_final_message()
+                stage = "synthesis_matrix" if output_mode == "matrix" else "synthesis"
+                cost_tracker.record_usage(stage, model, final.usage)
+            except Exception:
+                pass
     except anthropic.APIError as e:
         raise SynthesisError(f"Anthropic API error: {type(e).__name__}: {e}") from e
     except Exception as e:
@@ -232,6 +241,7 @@ def verify_claim(claim: str, synthesis: str, papers: list) -> dict:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        cost_tracker.record_usage("verify", MODEL_HAIKU, msg.usage)
         text = msg.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]

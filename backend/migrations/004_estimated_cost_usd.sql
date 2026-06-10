@@ -12,3 +12,4 @@ alter table public.user_usage
   add column if not exists estimated_cost_usd float not null default 0;
 
 
+

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import uuid
 
 from fastapi import FastAPI, Request
@@ -22,6 +23,8 @@ from usage import (
 )
 from synthesizer import FORCE_SONNET
 from supabase_client import sb
+import cost_tracker
+from costs import log_search_cost, cost_dashboard
 
 def _client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
@@ -143,6 +146,8 @@ def _quota_exceeded_response(quota: dict) -> JSONResponse:
     limit_type = quota.get("limit_type")
     tier = quota.get("tier")
     limit = quota.get("limit")
+    used = quota.get("used")
+    is_trial = quota.get("is_trial", False)
     if limit_type == "matrix":
         message = (
             f"You've used all {limit} Comparison Matrix runs this month on your "
@@ -152,6 +157,18 @@ def _quota_exceeded_response(quota: dict) -> JSONResponse:
         message = (
             f"You've used all {limit} verifications this month on your {tier} plan. "
             "Your quota resets at the start of next month."
+        )
+    elif is_trial and limit:
+        # Personalized free-trial paywall — speak to what the user just did, not
+        # a generic wall. ($12/mo lives in the frontend CTA; copy stays neutral.)
+        message = (
+            f"You've synthesized {used or limit} searches in your first week — "
+            "that's the heart of a literature review done. Upgrade to Pro to keep going."
+        )
+    elif limit_type == "monthly" and tier == "free" and limit:
+        message = (
+            f"You've used all {limit} of this month's free searches. "
+            "Upgrade to Pro for 120 a month, or wait for next month's reset."
         )
     else:
         message = _quota_message(limit_type, tier)
@@ -163,8 +180,9 @@ def _quota_exceeded_response(quota: dict) -> JSONResponse:
             "tier": tier,
             "resets_at": quota.get("resets_at"),
             "limit": limit,
-            "used": quota.get("used"),
+            "used": used,
             "remaining": quota.get("remaining"),
+            "is_trial": is_trial,
             "message": message,
         },
     )
@@ -197,6 +215,14 @@ async def search(payload: SearchRequest, request: Request):
     level = payload.level
     output_mode = payload.output_mode if payload.output_mode in ("synthesis", "matrix") else "synthesis"
     query_norm = normalize(raw_query)
+
+    # ── Cost instrumentation (Task 2.1) ──────────────────────────────────────
+    # Start a fresh per-request token accumulator and stopwatch. Every Anthropic
+    # call below reports its real usage into cost_tracker; we write one
+    # search_costs row when the request finishes (cache hit or full pipeline).
+    cost_tracker.start()
+    query_id = str(uuid.uuid4())
+    t_start = time.monotonic()
 
     # Resolve the caller's identity up front so both cache hits and full
     # searches can be appended to their search history.
@@ -237,6 +263,16 @@ async def search(payload: SearchRequest, request: Request):
             yield _sse({"type": "done"})
             if user_id:
                 await asyncio.to_thread(record_search, user_id, raw_query, output_mode)
+            # A cache hit makes no model calls — record it as a free, instant search
+            # so cache-hit rate and "process once, ever" savings are measurable.
+            await asyncio.to_thread(
+                log_search_cost,
+                query_id=query_id, user_id=user_id, tier=tier, output_mode=output_mode,
+                summary=cost_tracker.summary(),
+                latency_ms=int((time.monotonic() - t_start) * 1000),
+                papers_processed=len(cached.get("papers") or []),
+                cache_hit=True,
+            )
 
         return StreamingResponse(
             stream_from_cache(), media_type="text/event-stream", headers=_SSE_HEADERS
@@ -310,6 +346,7 @@ async def search(payload: SearchRequest, request: Request):
     # ── 6. Full pipeline (cache miss) ─────────────────────────────────────────
     async def generate():
         synthesis_parts: list[str] = []
+        papers_count = 0
 
         try:
             processed = await asyncio.to_thread(process_query, raw_query, tier)
@@ -334,6 +371,7 @@ async def search(payload: SearchRequest, request: Request):
             top_papers = await asyncio.to_thread(rank, raw_query, pool)
             if not top_papers:
                 top_papers = pool[:RESULT_COUNT]
+            papers_count = len(top_papers)
 
             # Papers arrive immediately — sources visible while synthesis streams.
             yield _sse({"type": "papers", "papers": top_papers})
@@ -360,6 +398,19 @@ async def search(payload: SearchRequest, request: Request):
         except Exception as e:
             yield _sse({"type": "error", "detail": f"{type(e).__name__}: {e}"})
             return
+        finally:
+            # One cost record per search, on every terminal path (success, no
+            # papers, fetch/synthesis error). fallback_cost covers the rare case
+            # where token capture didn't propagate, so burn is never under-counted.
+            await asyncio.to_thread(
+                log_search_cost,
+                query_id=query_id, user_id=user_id, tier=tier, output_mode=output_mode,
+                summary=cost_tracker.summary(),
+                latency_ms=int((time.monotonic() - t_start) * 1000),
+                papers_processed=papers_count,
+                cache_hit=False,
+                fallback_cost=estimated_cost,
+            )
 
         # Quota info — lets the frontend update the remaining badge. Shapes differ
         # between the search counter (check_user) and the matrix feature counter,
@@ -371,6 +422,7 @@ async def search(payload: SearchRequest, request: Request):
             "limit_daily": quota.get("limit_daily"),
             "remaining_monthly": quota.get("remaining_monthly", quota.get("remaining")),
             "limit_monthly": quota.get("limit_monthly", quota.get("limit")),
+            "is_trial": quota.get("is_trial", False),
         })
         yield _sse({"type": "done"})
 
@@ -444,6 +496,29 @@ async def usage(request: Request):
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
     tier = await asyncio.to_thread(get_tier, user_id)
     return await asyncio.to_thread(usage_summary, user_id, tier)
+
+
+@app.get("/admin/costs")
+async def admin_costs(request: Request):
+    """Internal cost dashboard (Task 2.1): cost/search p50/p95, daily burn, by stage.
+
+    Guarded by the ADMIN_KEY env var, supplied via the X-Admin-Key header or an
+    ?key= query param. If ADMIN_KEY is unset the endpoint is disabled (503) so it
+    can never be left wide open by accident.
+    """
+    admin_key = os.getenv("ADMIN_KEY")
+    if not admin_key:
+        return JSONResponse(status_code=503, content={"error": "admin_disabled",
+            "message": "Set ADMIN_KEY in the backend env to enable /admin/costs."})
+    supplied = request.headers.get("x-admin-key") or request.query_params.get("key")
+    if supplied != admin_key:
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+    try:
+        days = int(request.query_params.get("days", "14"))
+    except ValueError:
+        days = 14
+    days = max(1, min(days, 90))
+    return await asyncio.to_thread(cost_dashboard, days)
 
 
 @app.get("/auth/debug")
