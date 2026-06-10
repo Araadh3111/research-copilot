@@ -64,8 +64,8 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
                 Run your own literature review in 30 seconds
               </h2>
               <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-stone">
-                Researca reads 20+ papers, ranks them by relevance, and synthesizes findings with real
-                citations — not hallucinations.
+                Researca reads 20+ papers, ranks them by relevance, and synthesizes findings where
+                every claim links to its source.
               </p>
               <Link
                 href="/"

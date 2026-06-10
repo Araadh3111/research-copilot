@@ -14,7 +14,7 @@ Built by **Araadh Singh**, age 15 — Chandigarh, India.
 - 🎯 **Ranks by actual relevance** using LLM scoring
 - ✍️ **Synthesizes findings** with real citations
 - 📊 **Comparison Matrix** for side-by-side analysis
-- ✅ **Zero hallucinations** — every claim traces back to a source
+- ✅ **Every claim links to its source** — verify any sentence in one click; no invented citations
 
 ## Stack
 

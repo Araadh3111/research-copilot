@@ -400,7 +400,7 @@ function Footer() {
           <span className="font-serif text-[17px] font-semibold text-ink">Researca</span>
         </div>
         <p className="ms-label text-[11px] tracking-[0.18em] text-stone-light">
-          Real papers · real citations · no hallucinations
+          Real papers · real citations · every claim linked
         </p>
         <div className="flex gap-5 text-[13.5px] text-stone">
           <a href="/" className="transition-colors hover:text-ink">Home</a>
