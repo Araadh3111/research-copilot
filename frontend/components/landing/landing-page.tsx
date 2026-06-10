@@ -84,8 +84,8 @@ const FEATURES = [
   },
   {
     icon: ShieldCheck,
-    title: "Zero hallucinations",
-    body: "Every claim links to the actual paper. No invented citations, ever.",
+    title: "Verify in one click",
+    body: "Every claim links to its source — open the paper and check it yourself. No invented citations, ever.",
   },
 ]
 
@@ -266,7 +266,7 @@ export function LandingPage() {
             className="mx-auto mt-7 max-w-[520px] text-[16px] leading-relaxed text-stone sm:text-[20px]"
           >
             Researca reads 20+ academic papers, ranks them by actual relevance, and synthesizes
-            findings with real citations — not hallucinations.
+            findings where every claim links to its source.
           </motion.p>
 
           <motion.div
@@ -284,7 +284,7 @@ export function LandingPage() {
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </a>
             </Magnetic>
-            <p className="text-[13px] text-stone-light">No credit card · 10 free searches</p>
+            <p className="text-[13px] text-stone-light">No credit card · 25 free searches to start</p>
           </motion.div>
 
           {/* Trust stats — count up when the hero settles into view. */}
@@ -298,7 +298,7 @@ export function LandingPage() {
             <span aria-hidden className="h-10 w-px bg-line-strong" />
             <Stat end={30} suffix="s" label="To synthesis" />
             <span aria-hidden className="h-10 w-px bg-line-strong" />
-            <Stat end={0} label="Hallucinations" />
+            <Stat end={100} suffix="%" label="Claims sourced" />
           </motion.div>
         </div>
 
@@ -454,7 +454,7 @@ export function LandingPage() {
                 <span className="text-2xl font-semibold text-ink">$0</span> / month
               </p>
               <ul className="mt-7 space-y-3">
-                {["10 searches / month", "Synthesis mode"].map((f) => (
+                {["25 free searches to start, then 10 / month", "Synthesis mode"].map((f) => (
                   <li key={f} className="flex items-center gap-2.5 text-[15px] text-body">
                     <Check className="size-4 shrink-0 text-gold" strokeWidth={2.5} />
                     {f}
@@ -478,14 +478,15 @@ export function LandingPage() {
                 </span>
               </div>
               <p className="mt-2 text-stone">
-                <span className="text-2xl font-semibold text-ink">$29</span> / month
+                <span className="text-2xl font-semibold text-ink">$12</span> / month
+                <span className="ml-1.5 text-sm text-stone-light">· $96/yr</span>
               </p>
               <ul className="mt-7 space-y-3">
                 {[
                   "120 searches / month",
                   "Comparison matrix",
                   "Everything in Free",
-                  "Priority synthesis (Sonnet model)",
+                  "Deeper synthesis on our most capable model",
                   "CSV + BibTeX export",
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2.5 text-[15px] text-body">

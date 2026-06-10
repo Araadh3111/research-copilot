@@ -58,13 +58,27 @@ def _jwks_client_for(issuer: str) -> jwt.PyJWKClient | None:
 # 0 on a feature = not available to that tier (Matrix/Verify are Pro-only).
 LIMITS: dict[str, dict] = {
     "anonymous": {"daily": 2,    "monthly": None, "cost_monthly": None,  "matrix_monthly": 0,  "verify_monthly": 0},
-    # Free = 10 searches / month, matching the "10 searches / month" UI copy.
-    # daily is None so the *monthly* cap binds first and the 429 reports the
-    # correct "resets next month" — not a misleading "resets tomorrow".
+    # Free = 10 searches / month ONGOING, but new accounts get a front-loaded
+    # trial first (see TRIAL_* below): 25 searches across their first 7 days of
+    # activity, then this 10/month cap binds. daily is None so the *monthly*
+    # window binds first and the 429 reports "resets next month", not a
+    # misleading "resets tomorrow".
     "free":      {"daily": None, "monthly": 10,   "cost_monthly": 0.50,  "matrix_monthly": 0,  "verify_monthly": 0},
     "pro":       {"daily": None, "monthly": 120,  "cost_monthly": 8.00,  "matrix_monthly": 30, "verify_monthly": 300},
     "lab":       {"daily": None, "monthly": 300,  "cost_monthly": 20.00, "matrix_monthly": 60, "verify_monthly": 600},
 }
+
+# ── Front-loaded free trial (Task 0.2) ───────────────────────────────────────
+# Lit review is bursty: a flat 10/month dies mid-evaluation before the aha
+# moment. New free accounts instead get TRIAL_SEARCHES across their first
+# TRIAL_DAYS of activity, then decay to the standard 10/month.
+#
+# The trial window is anchored to the user's FIRST search (earliest user_usage
+# row), not auth signup — this keeps the logic self-contained (no dependency on
+# user_profiles columns the migrations don't own) and is strictly more generous:
+# the clock starts when the user actually begins, not when they registered.
+TRIAL_DAYS = 7
+TRIAL_SEARCHES = 25
 
 # ── Per-search cost estimates (USD) ──────────────────────────────────────────
 # Used to increment estimated_cost_usd in user_usage and check cost ceilings.
@@ -219,6 +233,56 @@ def get_tier(user_id: str) -> str:
         return "free"
 
 
+def _first_usage_date(user_id: str) -> "date | None":
+    """Earliest user_usage.date for this user, i.e. the day they first searched.
+
+    Returns None if the user has no usage rows yet (their very first search, where
+    the row is written only after this check). Callers treat None as "starts today".
+    Best-effort: any Supabase error returns None so the trial simply starts fresh.
+    """
+    try:
+        rows = (
+            sb.table("user_usage").select("date")
+            .eq("user_id", user_id).order("date").limit(1).execute()
+        )
+        if rows.data:
+            return date.fromisoformat(rows.data[0]["date"])
+    except Exception:
+        pass
+    return None
+
+
+def _free_window(user_id: str, today: "date") -> dict:
+    """Resolve the active quota window for a FREE-tier user.
+
+    Returns ``{monthly, window_start, resets_at, is_trial}`` where:
+      - During the trial (first TRIAL_DAYS of activity): a TRIAL_SEARCHES cap
+        counted from the first-search date, resetting when the trial ends.
+      - After the trial: the standard 10/month, counted from the later of the
+        calendar-month start or the trial end — so trial usage never bleeds into
+        and pre-exhausts the first post-trial month.
+    """
+    first = _first_usage_date(user_id) or today
+    trial_end = first + timedelta(days=TRIAL_DAYS)
+    month_start = today.replace(day=1)
+
+    if today < trial_end:
+        resets = datetime.combine(trial_end, dt_time.min, timezone.utc).isoformat()
+        return {
+            "monthly": TRIAL_SEARCHES,
+            "window_start": first.isoformat(),
+            "resets_at": resets,
+            "is_trial": True,
+        }
+
+    return {
+        "monthly": LIMITS["free"]["monthly"],
+        "window_start": max(month_start, trial_end).isoformat(),
+        "resets_at": _month_resets_iso(),
+        "is_trial": False,
+    }
+
+
 def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: bool = True) -> dict:
     """Check usage for an authenticated user against their tier ceilings.
 
@@ -265,15 +329,28 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
         daily_count: int = row.data[0]["daily_count"] if row.data else 0
         today_cost: float = (row.data[0].get("estimated_cost_usd") or 0.0) if (row.data and _HAS_COST_COL) else 0.0
 
+        # ── Effective monthly window ─────────────────────────────────────────
+        # Free tier gets a front-loaded trial (25 searches over 7 days) before
+        # the flat 10/month binds; other tiers use the calendar month as-is.
+        eff = dict(limits)
+        window_start = today.replace(day=1).isoformat()
+        month_resets = _month_resets_iso()
+        is_trial = False
+        if tier == "free":
+            win = _free_window(user_id, today)
+            eff["monthly"] = win["monthly"]
+            window_start = win["window_start"]
+            month_resets = win["resets_at"]
+            is_trial = win["is_trial"]
+
         # ── Monthly counts + cost ────────────────────────────────────────────
         monthly_count = 0
         monthly_cost = 0.0
-        if limits["monthly"] or limits.get("cost_monthly"):
-            month_start = today.replace(day=1).isoformat()
+        if eff["monthly"] or eff.get("cost_monthly"):
             m_cols = "daily_count, estimated_cost_usd" if _HAS_COST_COL else "daily_count"
             m_rows = (
                 sb.table("user_usage").select(m_cols)
-                .eq("user_id", user_id).gte("date", month_start).execute()
+                .eq("user_id", user_id).gte("date", window_start).execute()
             )
             monthly_count = sum(r["daily_count"] for r in (m_rows.data or []))
             if _HAS_COST_COL:
@@ -281,36 +358,36 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
 
         # Diagnostic — current usage vs the tier's ceilings (visible in Railway logs).
         print(
-            f"[usage] user={user_id} tier={tier} "
-            f"daily={daily_count}/{limits['daily']} "
-            f"monthly={monthly_count}/{limits['monthly']} "
-            f"cost=${monthly_cost:.3f}/{limits.get('cost_monthly')}",
+            f"[usage] user={user_id} tier={tier}{' TRIAL' if is_trial else ''} "
+            f"daily={daily_count}/{eff['daily']} "
+            f"monthly={monthly_count}/{eff['monthly']} "
+            f"cost=${monthly_cost:.3f}/{eff.get('cost_monthly')}",
             flush=True,
         )
 
         # ── Enforce ceilings — when count >= limit, RETURN allowed:False ─────
-        # (the bug was the limit being logged but the request still proceeding).
-        if limits["daily"] is not None and daily_count >= limits["daily"]:
+        # (the bug was the limit being logged but the request still proceeding.)
+        if eff["daily"] is not None and daily_count >= eff["daily"]:
             tomorrow = today + timedelta(days=1)
             resets = datetime.combine(tomorrow, dt_time.min, timezone.utc).isoformat()
-            print(f"[usage] BLOCK daily user={user_id} {daily_count}>={limits['daily']}", flush=True)
+            print(f"[usage] BLOCK daily user={user_id} {daily_count}>={eff['daily']}", flush=True)
             return {"allowed": False, "limit_type": "daily", "tier": tier, "resets_at": resets}
 
-        next_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
-        month_resets = datetime.combine(next_month, dt_time.min, timezone.utc).isoformat()
+        if eff["monthly"] and monthly_count >= eff["monthly"]:
+            print(f"[usage] BLOCK monthly user={user_id} {monthly_count}>={eff['monthly']}"
+                  f"{' (trial)' if is_trial else ''}", flush=True)
+            return {"allowed": False, "limit_type": "monthly", "tier": tier,
+                    "resets_at": month_resets, "is_trial": is_trial,
+                    "limit": eff["monthly"], "used": monthly_count}
 
-        if limits["monthly"] and monthly_count >= limits["monthly"]:
-            print(f"[usage] BLOCK monthly user={user_id} {monthly_count}>={limits['monthly']}", flush=True)
-            return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": month_resets}
-
-        cost_ceiling = limits.get("cost_monthly")
+        cost_ceiling = eff.get("cost_monthly")
         if cost_ceiling and monthly_cost >= cost_ceiling:
             print(f"[usage] BLOCK cost user={user_id} ${monthly_cost:.3f}>=${cost_ceiling}", flush=True)
             return {"allowed": False, "limit_type": "monthly", "tier": tier, "resets_at": month_resets}
 
         # Within all ceilings. On a peek, report current usage without consuming.
         if not commit:
-            return _allow(tier, limits, daily_count, monthly_count)
+            return _allow(tier, eff, daily_count, monthly_count, is_trial=is_trial)
 
         # ── Increment count + cost ────────────────────────────────────────────
         payload = {
@@ -322,7 +399,7 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
             payload["estimated_cost_usd"] = today_cost + estimated_cost
         sb.table("user_usage").upsert(payload, on_conflict="user_id,date").execute()
 
-        return _allow(tier, limits, daily_count + 1, monthly_count + 1)
+        return _allow(tier, eff, daily_count + 1, monthly_count + 1, is_trial=is_trial)
 
     except Exception as e:
         # Supabase hiccup — fail open so users aren't blocked by an infra error.
@@ -333,12 +410,13 @@ def check_user(user_id: str, tier: str, estimated_cost: float = 0.0, *, commit: 
         return _allow(tier, limits, limits["daily"], limits["monthly"] or 0)
 
 
-def _allow(tier: str, limits: dict, used_daily: int, used_monthly: int) -> dict:
+def _allow(tier: str, limits: dict, used_daily: int, used_monthly: int,
+           *, is_trial: bool = False) -> dict:
     remaining_monthly = (
-        limits["monthly"] - used_monthly if limits["monthly"] else None
+        max(limits["monthly"] - used_monthly, 0) if limits["monthly"] else None
     )
     remaining_daily = (
-        limits["daily"] - used_daily if limits["daily"] is not None else None
+        max(limits["daily"] - used_daily, 0) if limits["daily"] is not None else None
     )
     return {
         "allowed": True,
@@ -347,6 +425,7 @@ def _allow(tier: str, limits: dict, used_daily: int, used_monthly: int) -> dict:
         "limit_daily": limits["daily"],
         "remaining_monthly": remaining_monthly,
         "limit_monthly": limits["monthly"],
+        "is_trial": is_trial,
     }
 
 
@@ -459,18 +538,46 @@ def usage_summary(user_id: str, tier: str) -> dict:
     """Read-only snapshot of all three monthly quotas for the account/usage area."""
     limits = LIMITS.get(tier, LIMITS["free"])
 
+    # Free users may be inside the front-loaded trial; the search counter then
+    # reflects the 25/7-day window (and its reset), not the calendar month. The
+    # Matrix/Verify counters are Pro-only and always calendar-month.
+    search_window_start = _month_start_iso()
+    search_limit = limits.get("monthly")
+    resets_at = _month_resets_iso()
+    is_trial = False
+    if tier == "free" and sb:
+        win = _free_window(user_id, date.today())
+        search_window_start = win["window_start"]
+        search_limit = win["monthly"]
+        resets_at = win["resets_at"]
+        is_trial = win["is_trial"]
+
+    def _window_sum(column: str, start_iso: str) -> int:
+        try:
+            rows = (
+                sb.table("user_usage").select(column)
+                .eq("user_id", user_id).gte("date", start_iso).execute()
+            )
+            return sum((r.get(column) or 0) for r in (rows.data or []))
+        except Exception:
+            return 0
+
     def feat(column: str, limit_key: str) -> dict:
         limit = limits.get(limit_key)
-        try:
-            used = _monthly_sum(user_id, column) if sb else 0
-        except Exception:
-            used = 0
+        used = _window_sum(column, _month_start_iso()) if sb else 0
         return {"used": used, "limit": limit, "remaining": (None if limit is None else max(limit - used, 0))}
+
+    searches_used = _window_sum("daily_count", search_window_start) if sb else 0
 
     return {
         "tier": tier,
-        "searches": feat("daily_count", "monthly"),
+        "searches": {
+            "used": searches_used,
+            "limit": search_limit,
+            "remaining": (None if search_limit is None else max(search_limit - searches_used, 0)),
+            "is_trial": is_trial,
+        },
         "matrix": feat("matrix_runs_used", "matrix_monthly"),
         "verifies": feat("verifies_used", "verify_monthly"),
-        "resets_at": _month_resets_iso(),
+        "resets_at": resets_at,
     }

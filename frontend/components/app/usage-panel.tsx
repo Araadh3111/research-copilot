@@ -6,7 +6,7 @@ import { BarChart3, ChevronDown } from "lucide-react"
 import { API_BASE_URL } from "@/lib/api"
 import { createClient } from "@/utils/supabase/client"
 
-type Feat = { used: number; limit: number | null; remaining: number | null }
+type Feat = { used: number; limit: number | null; remaining: number | null; is_trial?: boolean }
 type Usage = {
   tier: string
   searches: Feat
@@ -14,7 +14,7 @@ type Usage = {
   verifies: Feat
 }
 
-function UsageRow({ label, feat }: { label: string; feat: Feat }) {
+function UsageRow({ label, feat, period = "this month" }: { label: string; feat: Feat; period?: string }) {
   // limit 0 => not available on this tier (Matrix/Verify are Pro-only).
   if (feat.limit === 0) {
     return (
@@ -42,7 +42,7 @@ function UsageRow({ label, feat }: { label: string; feat: Feat }) {
             <div className="h-full rounded-full bg-gold transition-[width]" style={{ width: `${pct}%` }} />
           </div>
           <div className="mt-1 text-[11px] text-stone-light">
-            {feat.used} / {feat.limit} this month
+            {feat.used} / {feat.limit} {period}
           </div>
         </>
       )}
@@ -105,7 +105,11 @@ export function UsagePanel({ refreshKey }: { refreshKey: number }) {
             </div>
             {usage ? (
               <div className="space-y-3.5">
-                <UsageRow label="Searches" feat={usage.searches} />
+                <UsageRow
+                  label={usage.searches.is_trial ? "Trial searches" : "Searches"}
+                  feat={usage.searches}
+                  period={usage.searches.is_trial ? "first-week trial" : "this month"}
+                />
                 <UsageRow label="Comparison Matrix" feat={usage.matrix} />
                 <UsageRow label="Verifies" feat={usage.verifies} />
               </div>

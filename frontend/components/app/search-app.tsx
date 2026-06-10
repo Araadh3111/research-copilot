@@ -29,6 +29,7 @@ type QuotaInfo = {
   limit_daily: number
   remaining_monthly?: number | null
   limit_monthly?: number | null
+  is_trial?: boolean
 }
 
 type QuotaError = {
@@ -36,6 +37,7 @@ type QuotaError = {
   limit_type: "daily" | "monthly" | "total"
   resets_at: string | null
   message?: string | null
+  is_trial?: boolean
 }
 
 // Map low-level fetch/network failures to a friendly message instead of leaking
@@ -191,6 +193,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             limit_type: data.limit_type ?? "daily",
             resets_at: data.resets_at ?? null,
             message: typeof data.message === "string" ? data.message : null,
+            is_trial: Boolean(data.is_trial),
           })
           return
         }
@@ -241,6 +244,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               limit_daily: event.limit_daily as number,
               remaining_monthly: event.remaining_monthly as number | null,
               limit_monthly: event.limit_monthly as number | null,
+              is_trial: Boolean(event.is_trial),
             })
             if (typeof event.tier === "string") setTier(event.tier)
           } else if (event.type === "done") {
@@ -480,7 +484,9 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         {!quotaError && !isPro && (
           <p className="mt-3 text-xs text-stone-light">
             {quota
-              ? `${quota.remaining_monthly ?? quota.remaining_daily} searches remaining this month`
+              ? quota.is_trial && quota.limit_monthly
+                ? `${quota.remaining_monthly} of ${quota.limit_monthly} trial searches left`
+                : `${quota.remaining_monthly ?? quota.remaining_daily} searches remaining this month`
               : "Free · 10 searches / month"}
           </p>
         )}
@@ -677,10 +683,10 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
               Unlock Comparison Matrix
             </h3>
             <p className="mt-2 text-sm leading-relaxed text-stone">
-              Pro users get Matrix + CSV export + BibTeX + 200 searches/month.
+              Pro users get Matrix + CSV export + BibTeX + 120 searches/month.
             </p>
             <p className="mt-3 text-sm font-medium text-ink">
-              $29/month <span className="font-normal text-stone">— coming soon</span>
+              $12/month <span className="font-normal text-stone">— coming soon</span>
             </p>
 
             {waitlistState === "done" ? (

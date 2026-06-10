@@ -726,18 +726,19 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 const RECAP_FEATURES = [
   { k: "01", title: "Relevance-ranked", body: "Papers ranked by what matters to your query, not how often they've been cited." },
   { k: "02", title: "Cross-paper synthesis", body: "Finds contradictions and gaps across the full set — the analysis a researcher actually needs." },
-  { k: "03", title: "Zero hallucinations", body: "Every claim links to the actual paper. No invented citations, ever." },
+  { k: "03", title: "Verify in one click", body: "Every claim links to its source — open the paper and check it yourself. No invented citations, ever." },
 ]
 
-type Tier = { name: string; price: string; featured: boolean; cta: string; points: string[] }
+type Tier = { name: string; price: string; period?: string; featured: boolean; cta: string; points: string[] }
 const TIERS: Tier[] = [
-  { name: "Free", price: "$0", featured: false, cta: "Start for free", points: ["10 searches / month", "Synthesis mode"] },
+  { name: "Free", price: "$0", featured: false, cta: "Start for free", points: ["25 free searches to start, then 10 / month", "Synthesis mode"] },
   {
     name: "Pro",
-    price: "$29",
+    price: "$12",
+    period: "/mo · $96/yr",
     featured: true,
     cta: "Start Pro trial",
-    points: ["120 searches / month", "Comparison matrix", "CSV + BibTeX export", "Priority synthesis (Sonnet)"],
+    points: ["120 searches / month", "Comparison matrix", "CSV + BibTeX export", "Deeper synthesis on our most capable model"],
   },
 ]
 
@@ -774,7 +775,7 @@ function PricingCard({ tier }: { tier: Tier }) {
         )}
       </div>
       <p className="mt-2" style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.6)" }}>
-        <span className="text-2xl font-semibold" style={{ color: INK }}>{tier.price}</span> / month
+        <span className="text-2xl font-semibold" style={{ color: INK }}>{tier.price}</span> {tier.period ?? "/ month"}
       </p>
       <ul className="mt-6 flex-1 space-y-2.5">
         {tier.points.map((p) => (
@@ -948,7 +949,7 @@ function Colophon() {
             Built by Araadh · Age 15 · Chandigarh, India
           </p>
           <p className="text-[13px] italic" style={{ fontFamily: "var(--font-playfair), Georgia, serif", color: INK }}>
-            Real papers. Real citations. No hallucinations.
+            Real papers. Real citations. Every claim linked to its source.
           </p>
         </div>
 
@@ -1035,8 +1036,8 @@ function Hero({ reduced }: { reduced: boolean }) {
             className="mx-auto mt-8 max-w-[560px] text-center text-[16px] leading-relaxed sm:text-[18px]"
             style={{ fontFamily: "var(--font-inter), system-ui, sans-serif", color: "rgba(26,23,20,0.72)" }}
           >
-            Researca reads real academic papers, ranks them by relevance, and synthesizes findings with
-            citations — not hallucinations.
+            Researca reads real academic papers, ranks them by relevance, and synthesizes findings where
+            every claim links to its source.
           </motion.p>
 
           <motion.div {...fadeUp(POST_INK + 0.3)} className="mt-9 flex justify-center">
