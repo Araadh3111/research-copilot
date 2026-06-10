@@ -1,13 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 
 import { API_BASE_URL } from "@/lib/api"
 
 // Internal cost dashboard (Task 2.1). Reads GET /admin/costs from the backend,
-// authenticated with the ADMIN_KEY (entered once, kept in localStorage on this
-// device only — never shipped in the bundle). Shows cost-per-search p50/p95,
-// daily burn, and cost broken down by pipeline stage.
+// authenticated with the ADMIN_KEY entered each session. The key is held in
+// React state only (memory) and is NOT persisted — it clears on reload, so it
+// never lingers in localStorage where another script or a shared machine could
+// read it. Shows cost-per-search p50/p95, daily burn, and cost by stage.
 
 type Stage = { stage: string; cost_usd: number; calls: number }
 type Burn = { date: string; cost_usd: number }
@@ -22,7 +23,6 @@ type Dashboard = {
   by_stage: Stage[]
 }
 
-const KEY_STORAGE = "researca_admin_key"
 const usd = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -42,11 +42,6 @@ export function AdminCosts() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem(KEY_STORAGE) : null
-    if (saved) setKey(saved)
-  }, [])
-
   const load = useCallback(
     async (adminKey: string, windowDays: number) => {
       if (!adminKey) return
@@ -60,7 +55,6 @@ export function AdminCosts() {
         if (res.status === 503) throw new Error("ADMIN_KEY is not set on the backend.")
         if (!res.ok) throw new Error(`Request failed (${res.status}).`)
         setData((await res.json()) as Dashboard)
-        window.localStorage.setItem(KEY_STORAGE, adminKey)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong.")
         setData(null)
