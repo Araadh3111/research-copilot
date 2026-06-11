@@ -633,6 +633,26 @@ export function ObservatoryLanding() {
   useEffect(() => setMounted(true), [])
   const reduced = mounted && !!prefersReduced
 
+  // The Observatory is a night experience by design — its type/panels are all
+  // starlight-on-ink. So force the dark theme for this page regardless of any
+  // saved 'light' preference; otherwise white text lands on the pale Daybreak
+  // sky and is invisible. (The toggle still governs the logged-in app.)
+  useEffect(() => {
+    const root = document.documentElement
+    const hadDark = root.classList.contains("dark")
+    root.classList.add("dark")
+    return () => {
+      // Restore the user's real preference when leaving the landing.
+      if (!hadDark) {
+        try {
+          if (localStorage.getItem("theme") === "light") root.classList.remove("dark")
+        } catch {
+          /* storage blocked — leave as-is */
+        }
+      }
+    }
+  }, [])
+
   // Whole-page progress drives the 3D fly-through.
   const { scrollYProgress: pageProgress } = useScroll()
 
