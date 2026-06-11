@@ -24,7 +24,7 @@ export default function AboutPage() {
   return (
     <PageShell
       eyebrow="About · the masthead"
-      title={<>Built by a<br /><span style={{ color: GOLD }}>researcher,</span> for<br />researchers.</>}
+      title={<>Built in the<br /><span style={{ color: GOLD }}>open,</span> for<br />researchers.</>}
       lede="Researca started because reading the literature is slow, lonely, and easy to get wrong. It's built in the open by a 15-year-old in Chandigarh who got tired of tools that summarise abstracts and invent citations."
     >
       {/* Manifesto */}

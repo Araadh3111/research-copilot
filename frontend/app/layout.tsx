@@ -40,7 +40,7 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: 'Researca — Literature review in 30 seconds',
   description:
-    'Researca reads 20+ academic papers, ranks them by actual relevance, and synthesizes findings with real citations. Built by a researcher, for researchers.',
+    'Researca reads 20+ academic papers, ranks them by actual relevance, and synthesizes findings with real citations. Built in the open, for researchers.',
   icons: {
     icon: [{ url: '/logo.png', type: 'image/png' }],
   },
