@@ -4,26 +4,30 @@
 /* Class-based dark mode (toggled by adding `.dark` to <html>). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ── Design tokens ──────────────────────────────────────────────────────────
-   Warm parchment palette. One black accent. Gold used sparingly.
-   Editorial / academic-premium — Wonders AI meets Linear. */
+/* ── Design tokens — THE OBSERVATORY ────────────────────────────────────────
+   Researca's identity: the night sky of science. Papers are stars; syntheses
+   are constellations. Night is the canonical experience (default); light mode
+   is "Daybreak" — the same observatory at dawn: cool pale sky, deep ink,
+   the gold turned brassy so it still reads on a bright ground.
+   Gold #D4AF37 = the astronomer's brass instrument. Teal #2DD4BF = the glow
+   of a live signal. Used sparingly, like instruments in a dark room. */
 :root {
-  /* Semantic surfaces */
-  --bg-primary: #F5F0E8;     /* warm parchment beige */
-  --bg-secondary: #EDE8DC;   /* slightly darker beige for cards */
-  --bg-white: #FDFCF9;       /* near-white surface */
-  --text-primary: #1A1714;   /* warm near-black */
-  --text-body: #3D3530;      /* warm dark — long-form body copy */
-  --text-secondary: #6B6560; /* warm grey */
-  --text-muted: #9E9890;     /* lighter warm grey */
-  --accent: #1A1714;         /* black — main CTAs */
-  --accent-hover: #3D3530;   /* dark brown hover */
-  --border-soft: #DDD8CE;    /* warm light border */
-  --border-strong: #C5BFB4;  /* stronger border */
-  --highlight: #8B6914;      /* warm gold */
-  /* Page canvas — a soft aurora mesh shared by every full-page surface
-     (.bg-canvas). This is just the base tone the colour blooms float over. */
-  --canvas-base: #FAF9F6;    /* clean, faintly-warm near-white */
+  /* Semantic surfaces — DAYBREAK (light variant) */
+  --bg-primary: #F1F4F9;     /* pale dawn sky */
+  --bg-secondary: #E6EAF2;   /* lifted panels, pills */
+  --bg-white: #FBFCFE;       /* near-white card surface */
+  --text-primary: #11161F;   /* deep night-ink */
+  --text-body: #333D4D;      /* long-form body copy */
+  --text-secondary: #5C6678; /* cool grey */
+  --text-muted: #8C95A8;     /* low-emphasis captions */
+  --accent: #11161F;         /* ink — main CTAs */
+  --accent-hover: #28324A;   /* deep slate hover */
+  --border-soft: #D7DDE9;    /* cool hairline */
+  --border-strong: #B6BFD2;  /* stronger border */
+  --highlight: #9A7B1E;      /* brass gold, darkened for light-bg contrast */
+  --signal: #0D9488;         /* live-signal teal (dark enough for light bg) */
+  /* Page canvas — base tone the sky layers float over (.bg-canvas). */
+  --canvas-base: #F5F7FB;    /* clean cool near-white */
 
   /* shadcn-style aliases so existing UI primitives inherit the new look */
   --background: var(--bg-primary);
@@ -48,28 +52,28 @@
   --radius: 0.625rem;
 }
 
-/* ── Dark mode — warm "paper at night" ──────────────────────────────────────
-   Warm near-black canvas with off-white ink. Gold is reserved as an ACCENT
-   (links, highlights, research-gap cards, focus) — never the body text, which
-   is what made the old all-gold theme unreadable. Because `ink` = --text-primary,
-   the solid `bg-ink` CTAs invert to a warm-white button with a dark label
-   (text-cream = --bg-white, a dark surface here). One override block re-skins the
-   whole UI with zero markup changes. */
+/* ── Night mode — THE OBSERVATORY (the canonical Researca experience) ───────
+   Ink-black sky with starlight text. Gold is the brass of the instruments —
+   links, highlights, focus, citations — never body text. Teal is the live
+   signal: streaming states, active processes, "the telescope is receiving".
+   Because `ink` = --text-primary, solid `bg-ink` CTAs invert to a starlight
+   button with a night label. One override block re-skins the whole UI. */
 .dark {
-  --bg-primary: #15120D;      /* warm near-black canvas */
-  --bg-secondary: #1F1A14;    /* sections, pills, lifted surfaces */
-  --bg-white: #24201A;        /* cards / raised surfaces (also the dark label on solid CTAs) */
-  --text-primary: #F4EFE6;    /* warm off-white — headings + solid-button fill */
-  --text-body: #D3CBBC;       /* warm light grey — long-form body copy */
-  --text-secondary: #A69E8E;  /* muted warm grey — secondary text */
-  --text-muted: #948C7B;      /* low-emphasis captions */
-  --accent: #F4EFE6;          /* off-white — primary surfaces (mirrors light mode's black ink) */
-  --accent-hover: #E6E0D2;    /* slightly dimmed off-white on hover */
-  --border-soft: #37312A;     /* hairline that lifts cards off the canvas */
-  --border-strong: #4E473B;   /* stronger warm border */
-  --highlight: #E9C16B;       /* gold accent — links, badges, gaps, PDF, focus ring */
-  --canvas-base: #0F0C0A;     /* deep warm near-black the nebula blooms float over */
-  --destructive: #F08A7A;     /* soft red for errors */
+  --bg-primary: #0B0E14;      /* ink-black night sky */
+  --bg-secondary: #11151E;    /* sections, pills, lifted surfaces */
+  --bg-white: #151A26;        /* cards / raised surfaces (also the dark label on solid CTAs) */
+  --text-primary: #EDF1F7;    /* starlight — headings + solid-button fill */
+  --text-body: #C2CAD8;       /* moonlit grey — long-form body copy */
+  --text-secondary: #8B94A8;  /* muted cool grey — secondary text */
+  --text-muted: #636D82;      /* low-emphasis captions */
+  --accent: #EDF1F7;          /* starlight — primary surfaces (mirrors light mode's ink) */
+  --accent-hover: #D8DFEC;    /* slightly dimmed starlight on hover */
+  --border-soft: #1F2634;     /* hairline that lifts cards off the sky */
+  --border-strong: #323D54;   /* stronger cool border */
+  --highlight: #D4AF37;       /* brass gold — links, badges, citations, focus ring */
+  --signal: #2DD4BF;          /* live-signal teal — streaming, active, receiving */
+  --canvas-base: #07090E;     /* the deepest sky the nebulae float over */
+  --destructive: #F0837A;     /* soft red for errors */
   color-scheme: dark;
 }
 
@@ -98,6 +102,7 @@
   --color-line: var(--border-soft);
   --color-line-strong: var(--border-strong);
   --color-gold: var(--highlight);
+  --color-signal: var(--signal);
 
   /* shadcn token bridges */
   --color-background: var(--background);
@@ -173,31 +178,46 @@
   }
 
   /* ── Page canvas — the single source of truth for the full-page background.
-     A soft "aurora mesh": a clean near-white base with four diffuse colour blooms
-     drifting in from the corners (gold, rose, periwinkle, mint). Pinned to the
-     viewport so the wash stays put as the page scrolls, and kept low-opacity so
-     content and cards always read cleanly. Applied to every full-page root
-     (landing, classic, auth, share, the app) so the whole product shares one
-     background; small surfaces keep using bg-paper/bg-cream. The galaxy field
-     (/galaxy) is a separate dark experience and opts out. */
+     THE OBSERVATORY SKY. Daybreak (light): a pale dawn wash — cold horizon
+     blue-grey warming to a faint brass glow, like the sky minutes before the
+     telescope closes. Night (.dark): deep sky with two faint nebulae (teal +
+     gold) and a scatter of CSS stars. Pinned to the viewport so the sky stays
+     put as the page scrolls. Applied to every full-page root so the whole
+     product lives under one sky; small surfaces keep using bg-paper/bg-cream. */
   .bg-canvas {
     background-color: var(--canvas-base);
     background-image:
-      radial-gradient(ellipse 80% 70% at 12% 8%, rgba(233, 188, 92, 0.55), transparent 72%),
-      radial-gradient(ellipse 76% 66% at 90% 12%, rgba(235, 138, 138, 0.50), transparent 72%),
-      radial-gradient(ellipse 86% 76% at 86% 94%, rgba(116, 150, 238, 0.52), transparent 74%),
-      radial-gradient(ellipse 80% 70% at 10% 96%, rgba(118, 206, 162, 0.48), transparent 72%);
+      radial-gradient(ellipse 90% 70% at 50% 0%, rgba(176, 196, 230, 0.45), transparent 70%),
+      radial-gradient(ellipse 70% 55% at 18% 100%, rgba(212, 175, 55, 0.13), transparent 70%),
+      radial-gradient(ellipse 70% 55% at 85% 90%, rgba(45, 212, 191, 0.10), transparent 70%);
     background-repeat: no-repeat;
     background-attachment: fixed;
   }
-  /* Dark mode — the same four corners become a warm jewel-toned nebula on a deep
-     near-black, so the canvas glows rather than greys out. */
+  /* Night — the real Observatory: a deep sky, two nebulae breathing at the
+     edges, and three tiled star layers (different densities/sizes so the field
+     has depth). Pure CSS: no image requests, crisp at any DPR. */
   .dark .bg-canvas {
     background-image:
-      radial-gradient(ellipse 80% 70% at 12% 8%, rgba(233, 188, 92, 0.30), transparent 72%),
-      radial-gradient(ellipse 76% 66% at 90% 12%, rgba(196, 92, 148, 0.34), transparent 72%),
-      radial-gradient(ellipse 86% 76% at 86% 94%, rgba(70, 150, 180, 0.34), transparent 74%),
-      radial-gradient(ellipse 80% 70% at 10% 96%, rgba(126, 110, 224, 0.30), transparent 72%);
+      /* star layers (tiny radial dots, tiled) */
+      radial-gradient(1px 1px at 22px 34px, rgba(237, 241, 247, 0.85), transparent 50%),
+      radial-gradient(1px 1px at 134px 89px, rgba(237, 241, 247, 0.6), transparent 50%),
+      radial-gradient(1.5px 1.5px at 76px 158px, rgba(237, 241, 247, 0.75), transparent 50%),
+      radial-gradient(1px 1px at 189px 21px, rgba(212, 175, 55, 0.55), transparent 50%),
+      radial-gradient(1px 1px at 103px 215px, rgba(237, 241, 247, 0.5), transparent 50%),
+      radial-gradient(1.5px 1.5px at 211px 142px, rgba(180, 224, 255, 0.65), transparent 50%),
+      radial-gradient(1px 1px at 41px 246px, rgba(237, 241, 247, 0.45), transparent 50%),
+      radial-gradient(1px 1px at 232px 250px, rgba(237, 241, 247, 0.7), transparent 50%),
+      /* nebulae */
+      radial-gradient(ellipse 75% 60% at 80% 6%, rgba(45, 212, 191, 0.10), transparent 70%),
+      radial-gradient(ellipse 70% 60% at 12% 88%, rgba(212, 175, 55, 0.08), transparent 70%),
+      radial-gradient(ellipse 95% 80% at 50% 115%, rgba(60, 80, 140, 0.16), transparent 75%);
+    background-size:
+      260px 260px, 260px 260px, 260px 260px, 260px 260px,
+      260px 260px, 260px 260px, 260px 260px, 260px 260px,
+      100% 100%, 100% 100%, 100% 100%;
+    background-repeat:
+      repeat, repeat, repeat, repeat, repeat, repeat, repeat, repeat,
+      no-repeat, no-repeat, no-repeat;
   }
 }
 
@@ -261,10 +281,38 @@
 }
 .dark .aurora-drift {
   background:
-    radial-gradient(38% 48% at 26% 30%, rgba(233, 188, 92, 0.22), transparent 70%),
-    radial-gradient(42% 52% at 76% 24%, rgba(196, 92, 148, 0.24), transparent 70%),
-    radial-gradient(48% 54% at 72% 80%, rgba(70, 150, 180, 0.24), transparent 72%),
-    radial-gradient(44% 50% at 22% 82%, rgba(126, 110, 224, 0.22), transparent 70%);
+    radial-gradient(38% 48% at 26% 30%, rgba(212, 175, 55, 0.13), transparent 70%),
+    radial-gradient(42% 52% at 76% 24%, rgba(45, 212, 191, 0.12), transparent 70%),
+    radial-gradient(48% 54% at 72% 80%, rgba(70, 110, 190, 0.16), transparent 72%),
+    radial-gradient(44% 50% at 22% 82%, rgba(120, 150, 230, 0.10), transparent 70%);
+}
+
+/* ── Observatory utilities ──────────────────────────────────────────────────
+   Shared night-sky primitives for the landing and any app surface that wants
+   a touch of the cosmos (loaders, empty states, the agent view later). */
+@keyframes star-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.star-twinkle { animation: star-twinkle 3.2s ease-in-out infinite; }
+
+/* Brass-and-signal glows for focal elements (CTA, live badges, active stars). */
+.glow-gold { box-shadow: 0 0 24px rgba(212, 175, 55, 0.25), 0 0 64px rgba(212, 175, 55, 0.12); }
+.glow-signal { box-shadow: 0 0 20px rgba(45, 212, 191, 0.22), 0 0 56px rgba(45, 212, 191, 0.10); }
+
+/* A shooting star: a thin gradient streak that fires across its parent. */
+@keyframes shooting-star {
+  0% { transform: translate3d(-10%, 0, 0) rotate(-18deg) scaleX(0.3); opacity: 0; }
+  8% { opacity: 1; }
+  22% { transform: translate3d(60vw, -18vh, 0) rotate(-18deg) scaleX(1); opacity: 0; }
+  100% { transform: translate3d(60vw, -18vh, 0) rotate(-18deg) scaleX(1); opacity: 0; }
+}
+.shooting-star {
+  position: absolute;
+  height: 1.5px;
+  width: 140px;
+  background: linear-gradient(90deg, transparent, rgba(237, 241, 247, 0.9), transparent);
+  animation: shooting-star 9s ease-out infinite;
 }
 @keyframes aurora-drift {
   from { transform: scale(1.1) translate3d(-2%, -1.5%, 0) rotate(0deg); }

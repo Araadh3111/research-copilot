@@ -49,10 +49,11 @@ export default function RootLayout({
     >
       <head>
         {/* Apply the saved theme before first paint to prevent a flash of the
-            wrong colours. Defaults to light; honours an explicit saved choice. */}
+            wrong colours. The Observatory (night) is the canonical experience,
+            so default to dark; an explicit saved 'light' choice gets Daybreak. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.classList.add('dark')}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}})();`,
           }}
         />
       </head>
