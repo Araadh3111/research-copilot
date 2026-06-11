@@ -653,7 +653,7 @@ async def account_delete(request: Request):
 # Bump this when you want to confirm a deploy actually shipped. If /admin/key-status
 # returns an older marker (or 404), Railway is still serving stale code — likely a
 # failed build (e.g. torch too large), which is the real cause of a "stuck" 401.
-BUILD_MARKER = "embed-check+keystatus-2026-06-10"
+BUILD_MARKER = "voyage-3-lite-active-2026-06-11"
 
 
 @app.get("/admin/key-status")
