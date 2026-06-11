@@ -18,6 +18,7 @@ vectors (a small recall win over the old symmetric model).
 from __future__ import annotations
 
 import os
+import time
 
 import requests
 
@@ -37,6 +38,10 @@ _TIMEOUT = float(os.getenv("VOYAGE_TIMEOUT", "30"))
 # Voyage accepts up to 1,000 texts per request; we batch smaller to stay well
 # under the per-request token cap and keep each HTTP round-trip quick.
 _BATCH = int(os.getenv("VOYAGE_BATCH", "128"))
+# Retry on 429 (rate limit) / 5xx so a transient limit doesn't hard-fail an
+# upload. Honors Voyage's Retry-After header when present, else exponential backoff.
+_MAX_RETRIES = int(os.getenv("VOYAGE_MAX_RETRIES", "4"))
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
 def is_available() -> bool:
@@ -55,25 +60,42 @@ def _embed(texts: list[str], input_type: str) -> list[list[float]]:
     out: list[list[float]] = []
     for i in range(0, len(texts), _BATCH):
         batch = texts[i : i + _BATCH]
-        resp = requests.post(
-            _API_URL,
-            headers=headers,
-            json={
-                "input": batch,
-                "model": MODEL_NAME,
-                "input_type": input_type,
-                # Pin Matryoshka output to EMBED_DIM (512) — voyage-3.5-lite would
-                # otherwise return its 1024-dim default and break the 512 column.
-                "output_dimension": EMBED_DIM,
-            },
-            timeout=_TIMEOUT,
-        )
+        payload = {
+            "input": batch,
+            "model": MODEL_NAME,
+            "input_type": input_type,
+            # Pin Matryoshka output to EMBED_DIM (512) — voyage-3.5-lite would
+            # otherwise return its 1024-dim default and break the 512 column.
+            "output_dimension": EMBED_DIM,
+        }
+        resp = _post_with_retry(headers, payload)
         resp.raise_for_status()
         data = resp.json().get("data", [])
         # Voyage tags each item with its input index; sort to guarantee order.
         data.sort(key=lambda d: d.get("index", 0))
         out.extend(d["embedding"] for d in data)
     return out
+
+
+def _post_with_retry(headers: dict, payload: dict) -> requests.Response:
+    """POST to Voyage, retrying on 429/5xx with Retry-After-aware backoff.
+
+    Returns the final Response (caller still calls raise_for_status, so a
+    non-retryable 4xx or an exhausted-retry 429 still surfaces as an error).
+    """
+    resp = None
+    for attempt in range(_MAX_RETRIES + 1):
+        resp = requests.post(_API_URL, headers=headers, json=payload, timeout=_TIMEOUT)
+        if resp.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES:
+            return resp
+        # Prefer the server's Retry-After (seconds); else exponential backoff.
+        retry_after = resp.headers.get("Retry-After")
+        try:
+            delay = float(retry_after) if retry_after else 2.0 ** attempt
+        except ValueError:
+            delay = 2.0 ** attempt
+        time.sleep(min(delay, 30.0))
+    return resp  # pragma: no cover — loop always returns inside
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
