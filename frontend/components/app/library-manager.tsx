@@ -58,7 +58,7 @@ export function LibraryManager() {
         body: form,
       })
       const data = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(data?.message || "Upload failed.")
+      if (!res.ok) throw new Error(data?.message || data?.detail || `Upload failed (HTTP ${res.status}).`)
       setNotice(`Added “${data.title}”.`)
       setFile(null); setConsent(false)
       if (fileRef.current) fileRef.current.value = ""

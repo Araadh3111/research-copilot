@@ -613,6 +613,18 @@ async def library_upload(request: Request, file: UploadFile = File(...)):
         )
     except LibraryError as e:
         return JSONResponse(status_code=400, content={"error": "library_error", "message": str(e)})
+    except Exception as e:
+        # Anything else (Voyage API error, dimension/DB mismatch, etc.) would
+        # otherwise escape as an unhandled 500 — and a 500 generated outside the
+        # CORS middleware ships WITHOUT Access-Control-Allow-Origin, so the browser
+        # blocks it and the user only sees "Failed to fetch", hiding the real cause.
+        # Return a CORS-wrapped JSON error and log the detail for Railway logs.
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": "upload_failed", "detail": f"{type(e).__name__}: {e}"},
+        )
     return doc
 
 
@@ -653,7 +665,7 @@ async def account_delete(request: Request):
 # Bump this when you want to confirm a deploy actually shipped. If /admin/key-status
 # returns an older marker (or 404), Railway is still serving stale code — likely a
 # failed build (e.g. torch too large), which is the real cause of a "stuck" 401.
-BUILD_MARKER = "voyage-3-lite-active-2026-06-11"
+BUILD_MARKER = "upload-error-surfacing-2026-06-11"
 
 
 @app.get("/admin/key-status")
