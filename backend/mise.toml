@@ -1,0 +1,12 @@
+# Runtime pin + build settings for Railway's mise-based builder (Railpack).
+[tools]
+python = "3.12.8"
+
+# mise 2026.6.x tries to verify GitHub artifact attestations for the
+# python-build-standalone download, but the 3.12.8 artifact (built 2025-01-15)
+# has none that it can find, which aborts the build:
+#   "No GitHub artifact attestations found for python@3.12.8"
+# Disable attestation verification. The SHA256 checksum of the download is still
+# generated and verified, so download integrity is still covered.
+[settings]
+python.github_attestations = false
