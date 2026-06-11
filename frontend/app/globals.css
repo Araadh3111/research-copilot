@@ -89,6 +89,10 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-playfair), Georgia, 'Times New Roman', serif;
   --font-mono: var(--font-pt-mono), ui-monospace, 'PT Mono', monospace;
+  /* Observatory editorial display face (Roboto). Set heavy + tight for big
+     brutalist headlines on the Observatory landing + sub-pages; /manuscript
+     keeps Playfair. */
+  --font-display: var(--font-roboto), 'Helvetica Neue', Arial, sans-serif;
 
   /* Semantic color utilities: bg-paper, text-ink, border-line, text-gold … */
   --color-paper: var(--bg-primary);
@@ -299,6 +303,19 @@
 /* Brass-and-signal glows for focal elements (CTA, live badges, active stars). */
 .glow-gold { box-shadow: 0 0 24px rgba(212, 175, 55, 0.25), 0 0 64px rgba(212, 175, 55, 0.12); }
 .glow-signal { box-shadow: 0 0 20px rgba(45, 212, 191, 0.22), 0 0 56px rgba(45, 212, 191, 0.10); }
+
+/* ── Editorial marquee ticker ────────────────────────────────────────────────
+   A horizontal band of text scrolling left forever. Two identical copies sit
+   side by side; translating the track by -50% loops seamlessly. Pause on hover
+   so a reader can catch a term. */
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ticker-track {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: ticker-scroll 38s linear infinite;
+}
+.ticker-track:hover { animation-play-state: paused; }
+.ticker-reverse { animation-direction: reverse; }
 
 /* A shooting star: a thin gradient streak that fires across its parent. */
 @keyframes shooting-star {

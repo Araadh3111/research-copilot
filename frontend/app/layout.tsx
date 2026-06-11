@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { PT_Mono, Playfair_Display, Inter } from 'next/font/google'
+import { PT_Mono, Playfair_Display, Inter, Roboto } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
@@ -26,6 +26,16 @@ const inter = Inter({
   variable: '--font-inter',
   display: 'swap',
 })
+// Roboto — the Observatory's display + UI face. A neutral grotesque that, set
+// heavy and tight, reads Swiss/brutalist for big editorial headlines. Playfair
+// stays for the /manuscript landing. Static weights (variable Roboto isn't on
+// the google-fonts CSS2 endpoint next/font uses), enumerated for headline punch.
+const roboto = Roboto({
+  subsets: ['latin'],
+  weight: ['400', '500', '700', '900'],
+  variable: '--font-roboto',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Researca — Literature review in 30 seconds',
@@ -44,7 +54,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${ptMono.variable} ${playfair.variable} ${inter.variable}`}
+      className={`${ptMono.variable} ${playfair.variable} ${inter.variable} ${roboto.variable}`}
       suppressHydrationWarning
     >
       <head>
