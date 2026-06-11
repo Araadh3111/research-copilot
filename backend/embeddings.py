@@ -1,4 +1,4 @@
-"""Text embeddings via the Voyage AI API (voyage-3-lite, 512-dim).
+"""Text embeddings via the Voyage AI API (voyage-3.5-lite, pinned to 512-dim).
 
 Swapped from local sentence-transformers (all-MiniLM-L6-v2) because the torch
 runtime OOM'd on Railway under the BYO-PDF library load — torch simply doesn't
@@ -21,10 +21,14 @@ import os
 
 import requests
 
-# voyage-3-lite outputs 512-dim vectors — MUST match vector(512) in migrations
-# 006/008. If you switch VOYAGE_MODEL (e.g. voyage-3.5-lite → 1024), update
-# EMBED_DIM here AND add a migration changing the pgvector column dimension.
-MODEL_NAME = os.getenv("VOYAGE_MODEL", "voyage-3-lite")
+# voyage-3.5-lite defaults to 1024-dim but supports Matryoshka output dimensions
+# (256/512/1024/2048) via the API's `output_dimension` param. We PIN it to 512 so
+# the vectors keep matching vector(512) in migrations 006/008 — no new migration,
+# nothing to re-embed. CRITICAL: output_dimension MUST be sent on every request,
+# else voyage-3.5-lite returns 1024-dim vectors and retrieval silently breaks.
+# To move to 1024 (higher quality): bump EMBED_DIM to 1024 here AND add a migration
+# retyping doc_chunks.embedding to vector(1024) + the match_doc_chunks RPC.
+MODEL_NAME = os.getenv("VOYAGE_MODEL", "voyage-3.5-lite")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "512"))
 
 _API_URL = "https://api.voyageai.com/v1/embeddings"
@@ -54,7 +58,14 @@ def _embed(texts: list[str], input_type: str) -> list[list[float]]:
         resp = requests.post(
             _API_URL,
             headers=headers,
-            json={"input": batch, "model": MODEL_NAME, "input_type": input_type},
+            json={
+                "input": batch,
+                "model": MODEL_NAME,
+                "input_type": input_type,
+                # Pin Matryoshka output to EMBED_DIM (512) — voyage-3.5-lite would
+                # otherwise return its 1024-dim default and break the 512 column.
+                "output_dimension": EMBED_DIM,
+            },
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
