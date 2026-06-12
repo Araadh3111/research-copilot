@@ -1,7 +1,14 @@
 import json
 import anthropic
+from dotenv import load_dotenv
 
 import cost_tracker
+
+# The client below captures ANTHROPIC_API_KEY at import time, so .env must be
+# loaded HERE — relying on another module's load_dotenv() means import order
+# decides whether every process_query call silently falls back to the raw query
+# (which is exactly what happened to the local eval harness).
+load_dotenv()
 
 # Supporting step — always Haiku regardless of tier. Query cleanup and angle
 # generation are cheap, mechanical transforms that don't benefit from Sonnet;
@@ -18,15 +25,20 @@ _SYSTEM = (
 _USER_TMPL = """\
 Research query: "{query}"
 
-1. Correct any typos and clean the phrasing into a canonical form.
-2. Generate 3 distinct search angles for a keyword-matching academic search \
+1. Correct any typos and clean the phrasing into a canonical form. KEEP any \
+method names, acronyms, or system names from the original query verbatim \
+(e.g. "LoRA", "BERT") — dropping them breaks keyword search for those papers.
+2. Generate 4 distinct search angles for a keyword-matching academic search \
 engine (every term must match, so long strings return nothing). Each angle: \
 2–5 keywords, no hyphens, no filler words, NOT a repeat of the cleaned query. \
 Approach different facets — the core method/term, the broader family or \
-problem it belongs to, and key alternatives/extensions. \
+problem it belongs to, and then TWO angles that each NAME one seminal or \
+widely-cited specific method/system in this exact area (a derivative, \
+extension, or main competitor) — keyword search only surfaces landmark papers \
+when their proper names are searched. \
 Example for "LoRA low-rank adaptation for parameter-efficient fine-tuning": \
 ["low rank adaptation language models", "parameter efficient fine tuning", \
-"adapter tuning quantized LLM"].
+"QLoRA quantized language models", "prefix tuning continuous prompts"].
 
 Respond with ONLY this JSON shape (no other text):
 {{

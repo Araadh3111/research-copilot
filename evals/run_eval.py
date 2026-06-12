@@ -50,19 +50,24 @@ def _paper_keys(paper: dict) -> tuple[str, str, str]:
     return arxiv, doi, title
 
 
-def _is_hit(paper: dict, gold: list[dict]) -> bool:
+def _gold_index(paper: dict, gold: list[dict]) -> int | None:
+    """Index of the gold entry this paper matches, or None."""
     p_arxiv, p_doi, p_title = _paper_keys(paper)
-    for g in gold:
+    for i, g in enumerate(gold):
         g_arxiv = _normalize_arxiv(g.get("arxiv", ""))
         if g_arxiv and p_arxiv and g_arxiv == p_arxiv:
-            return True
+            return i
         g_doi = str(g.get("doi", "") or "").lower().strip()
         if g_doi and p_doi and g_doi == p_doi:
-            return True
+            return i
         g_title = _normalize_title(g.get("title", ""))
         if g_title and p_title and (g_title == p_title or g_title in p_title or p_title in g_title):
-            return True
-    return False
+            return i
+    return None
+
+
+def _is_hit(paper: dict, gold: list[dict]) -> bool:
+    return _gold_index(paper, gold) is not None
 
 
 def _retrieve(query: str) -> list[dict]:
@@ -85,7 +90,15 @@ def _score_query(entry: dict) -> dict:
         return {"id": entry["id"], "error": f"{type(e).__name__}: {e}",
                 "recall@10": 0.0, "recall@25": 0.0, "nDCG@10": 0.0, "gold": total_relevant}
 
-    hits = [_is_hit(p, gold) for p in retrieved]
+    # Credit each gold paper once, at its FIRST match position — a dedup miss
+    # returning the same paper twice must not inflate recall past 1.0.
+    seen: set[int] = set()
+    hits = []
+    for p in retrieved:
+        gi = _gold_index(p, gold)
+        hits.append(gi is not None and gi not in seen)
+        if gi is not None:
+            seen.add(gi)
     return {
         "id": entry["id"],
         "gold": total_relevant,

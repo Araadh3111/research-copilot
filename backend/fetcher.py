@@ -16,12 +16,21 @@ ARXIV_RESULTS = int(os.getenv("ARXIV_RESULTS", "25"))
 
 API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 S2_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+S2_BATCH_URL = "https://api.semanticscholar.org/graph/v1/paper/batch"
 
 S2_FIELDS = "title,abstract,year,citationCount,authors,openAccessPdf,url,externalIds,venue"
 
 # Per-tier sizing — override via env; free defaults shown here.
 POOL_SIZE = int(os.getenv("POOL_SIZE", "50"))
 RESULT_COUNT = int(os.getenv("RESULT_COUNT", "5"))
+
+# Landmark sweep: an extra S2 pass per search with a citation floor. Plain
+# keyword search ranks recent term-stuffed papers above seminal work (probing
+# showed the LoRA/SimCLR/MoCo papers absent from their own topic's top-50), but
+# with minCitationCount they come back on top. Costs a few extra throttled calls.
+LANDMARK_MIN_CITATIONS = int(os.getenv("LANDMARK_MIN_CITATIONS", "200"))
+LANDMARK_LIMIT = int(os.getenv("LANDMARK_LIMIT", "15"))
+LANDMARK_SWEEP_QUERIES = int(os.getenv("LANDMARK_SWEEP_QUERIES", "3"))
 
 
 class FetchError(Exception):
@@ -47,9 +56,11 @@ def _s2_throttle() -> None:
         time.sleep(wait)
 
 
-def _fetch_one(query: str, limit: int) -> list:
+def _fetch_one(query: str, limit: int, min_citations: int | None = None) -> list:
     """Fetch up to `limit` papers for a single query string."""
     params = {"query": query, "limit": limit, "fields": S2_FIELDS}
+    if min_citations:
+        params["minCitationCount"] = min_citations
     headers = {"x-api-key": API_KEY} if API_KEY else {}
 
     last_status = None
@@ -133,6 +144,41 @@ def _fetch_with_fallback(query: str, limit: int) -> list:
     return []
 
 
+def _enrich_citations(papers: list) -> None:
+    """Fill in citationCount for arXiv-sourced papers via one S2 batch lookup.
+
+    arXiv's API has no citation data, so papers that only came from arXiv sort
+    as zero-citation in the prefilter tiebreak and the rank fallback — which
+    buries landmarks (LoRA: 19k+ citations, treated as 0). Best-effort: any
+    failure leaves the papers unchanged.
+    """
+    targets = [
+        p for p in papers
+        if p.get("citationCount") is None and (p.get("externalIds") or {}).get("ArXiv")
+    ][:500]  # S2 batch cap
+    if not targets:
+        return
+    ids = []
+    for p in targets:
+        bare = re.sub(r"v\d+$", "", str(p["externalIds"]["ArXiv"]))
+        ids.append(f"ARXIV:{bare}")
+    headers = {"x-api-key": API_KEY} if API_KEY else {}
+    _s2_throttle()
+    try:
+        resp = requests.post(
+            S2_BATCH_URL, params={"fields": "citationCount"},
+            json={"ids": ids}, headers=headers, timeout=15,
+        )
+        if resp.status_code != 200:
+            return
+        results = resp.json()  # aligned with input ids; null for unknown papers
+    except (requests.RequestException, ValueError):
+        return
+    for paper, match in zip(targets, results):
+        if isinstance(match, dict) and match.get("citationCount") is not None:
+            paper["citationCount"] = match["citationCount"]
+
+
 def _dedupe_key(paper: dict):
     """Cross-source identity for a paper: arXiv id > DOI > paperId > title.
 
@@ -168,12 +214,24 @@ def fetch_pool(
     are merged with cross-source dedup; ranking is handled by ranker.py.
     """
     queries = list(dict.fromkeys([cleaned_query] + search_angles))
+    # Sweep short queries first: S2 returns ~0 results for long queries, so a
+    # 12-word cleaned query wastes a sweep slot that a 5-word angle would use.
+    landmark_queries = (
+        sorted(queries, key=lambda q: len(q.split()))[:LANDMARK_SWEEP_QUERIES]
+        if LANDMARK_MIN_CITATIONS > 0 else []
+    )
 
-    # Parallel fetch: each S2 query gets a thread, plus one arXiv future.
+    # Parallel fetch: each S2 query gets a thread, plus the landmark sweep and
+    # one arXiv future.
     angle_results: dict[str, list] = {}
+    landmark_papers: list = []
     arxiv_papers: list = []
-    with ThreadPoolExecutor(max_workers=len(queries) + 1) as pool:
+    with ThreadPoolExecutor(max_workers=len(queries) + len(landmark_queries) + 1) as pool:
         future_to_query = {pool.submit(_fetch_with_fallback, q, pool_size): q for q in queries}
+        landmark_futures = [
+            pool.submit(_fetch_one, q, LANDMARK_LIMIT, LANDMARK_MIN_CITATIONS)
+            for q in landmark_queries
+        ]
         arxiv_future = (
             pool.submit(
                 fetch_arxiv, cleaned_query,
@@ -187,6 +245,11 @@ def fetch_pool(
                 angle_results[q] = future.result()
             except FetchError:
                 angle_results[q] = []  # one angle failing doesn't abort the pool
+        for future in landmark_futures:
+            try:
+                landmark_papers.extend(future.result())
+            except FetchError:
+                pass  # the sweep is additive; a miss just means no extra landmarks
         if arxiv_future is not None:
             try:
                 arxiv_papers = arxiv_future.result()
@@ -203,18 +266,29 @@ def fetch_pool(
 
     def _add(paper: dict) -> None:
         key = _dedupe_key(paper)
-        if key in seen:
+        # Title is a SECOND key, not just the id fallback: S2 sometimes omits a
+        # paper's arXiv id, so its copy keys by DOI/paperId while the arXiv copy
+        # keys by arXiv id — same paper, two keys, shown twice in results.
+        title_key = ("title", re.sub(r"[^a-z0-9]+", " ", (paper.get("title") or "").lower()).strip())
+        if key in seen or (title_key[1] and title_key in seen):
             return
         if not (paper.get("abstract") or "").strip():
             if (paper.get("externalIds") or {}).get("ArXiv"):
                 no_abstract.append(paper)
             return  # no abstract (and none recoverable) → can't content-rank
         seen.add(key)
+        seen.add(title_key)
         pool_papers.append(paper)
 
     for q in queries:
         for paper in angle_results.get(q, []):
             _add(paper)
+
+    # Landmark sweep results merge after the relevance-ordered angles (they're
+    # a recall net, not the head of the pool) but before arXiv, so the S2 copy
+    # with its citationCount claims the dedupe key.
+    for paper in landmark_papers:
+        _add(paper)
 
     # Backfill missing abstracts from arXiv in one batched id_list request, then
     # run the recovered papers through the same dedup/add path. This MUST happen
@@ -238,6 +312,10 @@ def fetch_pool(
 
     for paper in arxiv_papers:
         _add(paper)
+
+    # arXiv-only papers have no citation counts — backfill them from S2 so
+    # landmark papers don't sort as zero-citation in ranking tiebreaks.
+    _enrich_citations(pool_papers)
 
     return pool_papers
 

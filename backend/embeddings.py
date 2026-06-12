@@ -86,8 +86,14 @@ _tpm_window: list[tuple[float, int]] = []  # (monotonic time, est tokens) per re
 
 
 def _est_tokens(texts: list[str]) -> int:
-    """Rough token estimate (~4 chars/token) plus per-text overhead."""
-    return sum(len(t) for t in texts) // 4 + 8 * len(texts)
+    """Rough token estimate (~3 chars/token) plus per-text overhead.
+
+    Deliberately conservative: scientific text (math, citations, identifiers)
+    tokenizes denser than prose, and underestimating here means the pacer lets
+    a burst through that 429s anyway — which is how a real PDF upload blew the
+    cap at the old 4-chars/token estimate.
+    """
+    return sum(len(t) for t in texts) // 3 + 8 * len(texts)
 
 
 def _gemini_pace(tokens: int) -> None:
@@ -103,6 +109,30 @@ def _gemini_pace(tokens: int) -> None:
                 return
             wait = 60 - (now - _tpm_window[0][0]) + 0.5
         time.sleep(min(max(wait, 0.5), 61))
+
+
+class EmbeddingQuotaError(RuntimeError):
+    """The provider's quota is exhausted in a way retrying can't fix (daily cap).
+
+    Raised instead of letting a 429 burn through retries that cannot succeed:
+    Gemini's free-tier per-DAY limit only resets at midnight Pacific, so the
+    right response is a clear error now, not minutes of doomed backoff.
+    """
+
+
+def _is_daily_quota_429(resp: requests.Response) -> bool:
+    """True if this 429 is a per-day quota failure (Google QuotaFailure details)."""
+    if resp.status_code != 429:
+        return False
+    try:
+        details = resp.json().get("error", {}).get("details", [])
+    except Exception:
+        return False
+    for detail in details:
+        for violation in detail.get("violations", []) or []:
+            if "perday" in str(violation.get("quotaId", "")).lower():
+                return True
+    return False
 
 
 def is_available() -> bool:
@@ -182,6 +212,13 @@ def _post_with_retry(url: str, headers: dict, payload: dict) -> requests.Respons
     resp = None
     for attempt in range(_MAX_RETRIES + 1):
         resp = requests.post(url, headers=headers, json=payload, timeout=_TIMEOUT)
+        if _is_daily_quota_429(resp):
+            raise EmbeddingQuotaError(
+                f"{PROVIDER} daily embedding quota exhausted (resets midnight "
+                "Pacific). Retrying cannot help; wait for the reset or switch "
+                "provider (EMBED_PROVIDER + the other provider's API key), then "
+                "POST /admin/reembed since the providers' vectors don't mix."
+            )
         if resp.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES:
             return resp
         time.sleep(min(_retry_delay(resp, attempt), 65.0))

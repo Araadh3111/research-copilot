@@ -1,10 +1,16 @@
 import json
+import math
 import os
 import re
 import anthropic
+from dotenv import load_dotenv
 from fetcher import RESULT_COUNT
 
 import cost_tracker
+
+# The module-level client captures ANTHROPIC_API_KEY at import — load .env
+# here rather than trusting import order (see query_processor.py).
+load_dotenv()
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -13,7 +19,10 @@ MODEL = "claude-haiku-4-5-20251001"
 # input dwarfed synthesis and it became the most expensive stage. We now do a
 # free lexical pre-filter to the top LLM_RANK_LIMIT candidates and send only short
 # abstracts to Haiku. Both are env-tunable.
-LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "15"))
+LLM_RANK_LIMIT = int(os.getenv("LLM_RANK_LIMIT", "25"))
+# Of LLM_RANK_LIMIT prefilter slots, this many are held for the highest-cited
+# papers (with ≥2 query-term overlap) that the lexical score would have cut.
+LANDMARK_SLOTS = int(os.getenv("LANDMARK_SLOTS", "5"))
 ABSTRACT_WORD_LIMIT = int(os.getenv("RANK_ABSTRACT_WORD_LIMIT", "50"))
 
 # Use the cached paper-embedding semantic pre-filter (Task 2.2) instead of the
@@ -57,11 +66,29 @@ def _prefilter(query: str, pool: list, limit: int) -> list:
     if not qterms:
         return sorted(pool, key=lambda p: p.get("citationCount") or 0, reverse=True)[:limit]
 
-    def score(paper):
+    def overlap(paper):
         terms = _tokenize((paper.get("title") or "") + " " + (paper.get("abstract") or ""))
-        return (len(qterms & terms), paper.get("citationCount") or 0)
+        return len(qterms & terms)
 
-    return sorted(pool, key=score, reverse=True)[:limit]
+    def score(paper):
+        # Blend citations INTO the score, not just as a tiebreaker: a landmark
+        # with a null/short S2 abstract matches fewer terms than a recent
+        # keyword-stuffed paper, and under pure overlap it gets cut before the
+        # LLM ever sees it (LoRA, 19k citations, was prefiltered out of its own
+        # topic). log10 keeps it bounded: 19k citations ≈ +4.3 terms.
+        return overlap(paper) + math.log10((paper.get("citationCount") or 0) + 1)
+
+    # Reserve a few slots for the most-cited on-topic papers that the lexical
+    # score missed: derivative landmarks (QLoRA, DPR) share few literal terms
+    # with the query, so even the citation blend can't lift them past a wall of
+    # keyword-stuffed matches — and once cut here they can never reach results.
+    ranked_all = sorted(pool, key=score, reverse=True)
+    head = ranked_all[: max(limit - LANDMARK_SLOTS, 0)]
+    landmarks = sorted(
+        (p for p in ranked_all[max(limit - LANDMARK_SLOTS, 0):] if overlap(p) >= 2),
+        key=lambda p: p.get("citationCount") or 0, reverse=True,
+    )[:LANDMARK_SLOTS]
+    return (head + landmarks)[:limit]
 
 _SYSTEM = "You are a relevance scorer. Output only JSON — no prose, no explanation."
 
@@ -114,8 +141,8 @@ def rank(original_query: str, pool: list, result_count: int = RESULT_COUNT) -> l
     try:
         msg = _client.messages.create(
             model=MODEL,
-            max_tokens=512,
-            temperature=0.4,
+            max_tokens=1024,
+            temperature=0.0,
             system=_SYSTEM,
             messages=[
                 {

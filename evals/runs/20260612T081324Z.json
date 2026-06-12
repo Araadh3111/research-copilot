@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-06-12T08:13:24.899840+00:00",
+  "queries": 6,
+  "summary": {
+    "recall@10": 0.3611,
+    "recall@25": 0.3611,
+    "nDCG@10": 0.4279
+  },
+  "per_query": [
+    {
+      "id": "lora-peft",
+      "gold": 4,
+      "retrieved": 25,
+      "found": 0,
+      "recall@10": 0.0,
+      "recall@25": 0.0,
+      "nDCG@10": 0.0
+    },
+    {
+      "id": "rag-knowledge",
+      "gold": 4,
+      "retrieved": 25,
+      "found": 1,
+      "recall@10": 0.25,
+      "recall@25": 0.25,
+      "nDCG@10": 0.3904
+    },
+    {
+      "id": "vision-transformers",
+      "gold": 3,
+      "retrieved": 25,
+      "found": 2,
+      "recall@10": 0.6667,
+      "recall@25": 0.6667,
+      "nDCG@10": 0.7654
+    },
+    {
+      "id": "chain-of-thought",
+      "gold": 4,
+      "retrieved": 25,
+      "found": 1,
+      "recall@10": 0.25,
+      "recall@25": 0.25,
+      "nDCG@10": 0.3904
+    },
+    {
+      "id": "diffusion-generation",
+      "gold": 4,
+      "retrieved": 25,
+      "found": 3,
+      "recall@10": 0.75,
+      "recall@25": 0.75,
+      "nDCG@10": 0.631
+    },
+    {
+      "id": "contrastive-visual",
+      "gold": 4,
+      "retrieved": 25,
+      "found": 1,
+      "recall@10": 0.25,
+      "recall@25": 0.25,
+      "nDCG@10": 0.3904
+    }
+  ]
+}
