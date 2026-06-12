@@ -14,6 +14,7 @@ import { CommandPalette } from "@/components/app/command-palette"
 
 import { SearchResults, type Paper } from "@/components/search-results"
 import { SEARCH_URL, API_BASE_URL } from "@/lib/api"
+import { track, trackOnce, trackReturnVisit } from "@/lib/analytics"
 import { createClient } from "@/utils/supabase/client"
 
 const levels = [
@@ -147,6 +148,11 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
     })
   }
 
+  // Fires return_visit when the last visit was >24h ago (analytics).
+  useEffect(() => {
+    trackReturnVisit()
+  }, [])
+
   // Confirm the tier from the backend (service-role read — authoritative) so the
   // Matrix gate reflects reality even if the server-side profile read was blocked.
   useEffect(() => {
@@ -173,6 +179,8 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
 
   // ── API logic ported verbatim — do not change request/stream handling ──────
   async function runSearch(queryStr: string, levelStr: string, mode: "synthesis" | "matrix") {
+    trackOnce("researca_first_search", "first_search", { mode })
+    track("search", { mode, level: levelStr })
     setLoading(true)
     setStreaming(false)
     setError(null)
@@ -223,6 +231,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
         }
 
         if (data?.error === "quota_exceeded") {
+          track("quota_hit", { tier: data.tier ?? "anonymous", limit_type: data.limit_type ?? "daily" })
           setQuotaError({
             tier: data.tier ?? "anonymous",
             limit_type: data.limit_type ?? "daily",
@@ -284,6 +293,7 @@ export function SearchApp({ userEmail, initialTier }: { userEmail?: string; init
             })
             if (typeof event.tier === "string") setTier(event.tier)
           } else if (event.type === "done") {
+            track("synthesis_viewed", { mode })
             setStreaming(false)
             setLoading(false)
             // A new row was just written server-side — refresh the sidebar + usage.

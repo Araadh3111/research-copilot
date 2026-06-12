@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
+import { track, trackOnce } from "@/lib/analytics"
 import { createClient } from "@/utils/supabase/client"
 import { Logo } from "@/components/logo"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -55,6 +56,12 @@ export default function AuthPage() {
   // Load the current session, and keep it in sync with auth state changes.
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
+      // OAuth signups come back via redirect — a freshly-created account
+      // landing here means a new signup (email signups are tracked at submit).
+      const created = data.user?.created_at ? Date.parse(data.user.created_at) : 0
+      if (created && Date.now() - created < 5 * 60 * 1000) {
+        trackOnce("researca_signup_tracked", "signup", { method: "oauth" })
+      }
       setUser(data.user)
       setLoadingUser(false)
     })
@@ -95,6 +102,7 @@ export default function AuthPage() {
       if (error) {
         setError(error.message)
       } else {
+        track("signup", { method: "email" })
         setMessage(
           "Account created. Check your inbox to confirm your email, then log in.",
         )

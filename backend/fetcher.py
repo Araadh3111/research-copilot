@@ -55,7 +55,7 @@ def _fetch_one(query: str, limit: int) -> list:
     last_status = None
     last_body = None
 
-    for _ in range(3):
+    for attempt in range(3):
         _s2_throttle()
         try:
             response = requests.get(url=S2_URL, params=params, headers=headers, timeout=15)
@@ -68,7 +68,7 @@ def _fetch_one(query: str, limit: int) -> list:
 
         if response.status_code in (429, 500, 502, 503, 504):
             last_body = response.text[:200]
-            time.sleep(2)
+            time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s — outlast a 429 window
             continue
 
         if response.status_code != 200:

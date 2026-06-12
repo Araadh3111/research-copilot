@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { BookOpen, Upload, Trash2, FileText, Lock, AlertTriangle, ArrowLeft } from "lucide-react"
 
 import { API_BASE_URL } from "@/lib/api"
+import { track } from "@/lib/analytics"
 import { createClient } from "@/utils/supabase/client"
 
 // BYO-PDF library (Task 1.3): upload PDFs you have the right to use, manage them,
@@ -59,6 +60,7 @@ export function LibraryManager() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.message || data?.detail || `Upload failed (HTTP ${res.status}).`)
+      track("pdf_uploaded", { pages: data?.pages ?? null, chunks: data?.chunk_count ?? null })
       setNotice(`Added “${data.title}”.`)
       setFile(null); setConsent(false)
       if (fileRef.current) fileRef.current.value = ""
