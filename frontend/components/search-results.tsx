@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm"
 import { RandomLoader } from "@/components/loaders"
 import { papersToBibtex, papersToCsv, downloadFile } from "@/lib/export"
 import { API_BASE_URL } from "@/lib/api"
+import { track } from "@/lib/analytics"
 
 export type Paper = {
   paperId?: string
@@ -39,6 +40,18 @@ function cellText(node: ReactNode): string {
 
 function isMissingCell(node: ReactNode): boolean {
   return MISSING_TOKENS.has(cellText(node).trim().toLowerCase())
+}
+
+// Turn the synthesis's bare [n] / [n,m] citation markers into anchor links that
+// jump to the matching source card below. The (?!\() guard leaves real markdown
+// links like "[title](url)" (e.g. in the appended Sources section) untouched.
+function linkifyCitations(md: string): string {
+  return md.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (_m, nums: string) =>
+    nums
+      .split(",")
+      .map((n) => `[${n.trim()}](#cite-${n.trim()})`)
+      .join(""),
+  )
 }
 
 // Pull the bullets out of the synthesis "…Open Gaps" / "…Disagree" section so
@@ -212,10 +225,31 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+                    a: ({ href, children, ...rest }) =>
+                      href?.startsWith("#cite-") ? (
+                        // Inline citation marker → jump to the source card below.
+                        <a
+                          {...rest}
+                          href={href}
+                          onClick={() => track("citation_clicked", { kind: "inline_marker" })}
+                          className="mx-px align-super !text-[11px] !font-semibold !text-gold !no-underline hover:!underline"
+                        >
+                          [{children}]
+                        </a>
+                      ) : (
+                        <a
+                          {...rest}
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => track("citation_clicked", { kind: "sources_section" })}
+                        >
+                          {children}
+                        </a>
+                      ),
                   }}
                 >
-                  {synthesis}
+                  {linkifyCitations(synthesis)}
                 </ReactMarkdown>
               </div>
             )
@@ -399,7 +433,7 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               // render the card as a plain div.
               if (onInsertCitation) {
                 return (
-                  <div key={paper.paperId ?? i} className="rounded-xl border border-line bg-paper/50 p-4">
+                  <div key={paper.paperId ?? i} id={`cite-${i + 1}`} className="scroll-mt-24 rounded-xl border border-line bg-paper/50 p-4">
                     {paper.url ? (
                       <a
                         href={paper.url}
@@ -421,15 +455,17 @@ export function SearchResults({ query, papers, synthesis, streaming, outputMode 
               return paper.url ? (
                 <a
                   key={paper.paperId ?? i}
+                  id={`cite-${i + 1}`}
                   href={paper.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block rounded-xl border border-line bg-paper/50 p-4 transition-colors hover:border-line-strong hover:bg-paper"
+                  onClick={() => track("citation_clicked", { kind: "source_card" })}
+                  className="block scroll-mt-24 rounded-xl border border-line bg-paper/50 p-4 transition-colors hover:border-line-strong hover:bg-paper"
                 >
                   {body}
                 </a>
               ) : (
-                <div key={paper.paperId ?? i} className="rounded-xl border border-line bg-paper/50 p-4">
+                <div key={paper.paperId ?? i} id={`cite-${i + 1}`} className="scroll-mt-24 rounded-xl border border-line bg-paper/50 p-4">
                   {body}
                 </div>
               )

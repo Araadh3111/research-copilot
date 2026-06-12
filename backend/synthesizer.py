@@ -27,6 +27,7 @@ def _select_model(tier: str) -> str:
     return MODEL_SONNET if tier in ("pro", "lab") else MODEL_HAIKU
 
 
+
 # Verify always uses Haiku (cheap, fast) regardless of tier — a single short call.
 _verify_client = anthropic.Anthropic(timeout=20.0)
 
@@ -55,21 +56,23 @@ def _paper_link(paper):
     return ""
 
 
-def _build_sources(papers, top=5):
+def _build_sources(papers, top=None):
     """Deterministic, correctly-linked sources list.
 
     Built in code (not by the model) so titles and URLs are always accurate.
+    Numbered to match the [n] markers the synthesis prompt asks for — list ALL
+    papers the model saw, or an inline [7] could point at a missing entry.
     """
     lines = []
-    for paper in papers[:top]:
+    for i, paper in enumerate(papers[:top] if top else papers):
         title = paper.get("title", "Untitled")
         year = paper.get("year", "N/A")
         citations = paper.get("citationCount", 0)
         link = _paper_link(paper)
         if link:
-            lines.append(f"- [{title}]({link}) — {year}, {citations} citations")
+            lines.append(f"{i + 1}. [{title}]({link}) — {year}, {citations} citations")
         else:
-            lines.append(f"- {title} — {year}, {citations} citations")
+            lines.append(f"{i + 1}. {title} — {year}, {citations} citations")
     return "\n".join(lines)
 
 
@@ -99,16 +102,18 @@ def _build_prompt(query: str, level: str, papers: list) -> tuple[str, str]:
         citations = paper.get("citationCount", 0)
         year = paper.get("year", "N/A")
         abstracts_text += (
-            f"Paper {i+1}: {title} ({year}) - {citations} citations\n"
+            f"[{i+1}] {title} ({year}) - {citations} citations\n"
             f"Abstract: {abstract}\n\n"
         )
 
     system = (
         "You are a research synthesis engine for Researca OS. "
         "You analyze academic paper abstracts and produce a tight, useful "
-        "literature briefing. Be specific and tactical: cite papers by their "
-        "title when making a claim. No pleasantries, no filler, no preamble. "
-        "Adapt depth and vocabulary to the reader's level."
+        "literature briefing. Be specific and tactical. Every claim must end "
+        "with bracketed source number(s) matching the numbered paper list, "
+        "e.g. [2] or [1,3]. Never cite a number that is not in the list, and "
+        "never make a claim you cannot tie to a source. No pleasantries, no "
+        "filler, no preamble. Adapt depth and vocabulary to the reader's level."
     )
 
     user = f"""Level guide:
@@ -120,7 +125,9 @@ def _build_prompt(query: str, level: str, papers: list) -> tuple[str, str]:
 Reader level: {level}
 Research question: "{query}"
 
-Synthesize the following papers. Reference papers by title when you make a claim.
+Synthesize the following numbered papers. End every claim with its source marker(s),
+e.g. "LoRA cuts trainable parameters 10,000x [1]." Name a paper's title in the text
+only when it is central to the point; the [n] marker is what makes the claim traceable.
 
 {abstracts_text}
 
