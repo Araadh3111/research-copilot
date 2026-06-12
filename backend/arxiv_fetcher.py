@@ -157,6 +157,34 @@ def _parse_entry(entry) -> dict | None:
     }
 
 
+def fetch_arxiv_by_ids(ids: list[str], timeout: int = 15) -> dict[str, dict]:
+    """Fetch specific arXiv papers by bare id → {bare_id: paper}.
+
+    Used to backfill abstracts for Semantic Scholar results whose abstract is
+    null (publisher licensing) but which carry an arXiv id — landmark papers are
+    frequently in that state and would otherwise be dropped from the pool.
+    Best-effort: returns {} on any failure. One request, up to 100 ids.
+    """
+    ids = [i for i in ids if i][:100]
+    if not ids:
+        return {}
+    params = {"id_list": ",".join(ids), "max_results": len(ids)}
+    try:
+        resp = requests.get(ARXIV_API, params=params, timeout=timeout)
+        if resp.status_code != 200:
+            return {}
+        root = ET.fromstring(resp.text)
+    except (requests.RequestException, ET.ParseError):
+        return {}
+
+    found: dict[str, dict] = {}
+    for entry in root.findall(f"{_ATOM}entry"):
+        paper = _parse_entry(entry)
+        if paper:
+            found[paper["externalIds"]["ArXiv"]] = paper
+    return found
+
+
 def recency_to_year(recency: str | None) -> int | None:
     """Map a UI recency token ('6m','1y','2y','all') to a since-year cutoff."""
     if not recency or recency == "all":

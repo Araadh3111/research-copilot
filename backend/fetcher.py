@@ -1,12 +1,13 @@
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from dotenv import load_dotenv
 
-from arxiv_fetcher import fetch_arxiv
+from arxiv_fetcher import fetch_arxiv, fetch_arxiv_by_ids
 
 load_dotenv()
 
@@ -27,6 +28,25 @@ class FetchError(Exception):
     """Semantic Scholar could not be reached or returned an unusable response."""
 
 
+# Semantic Scholar's keyed tier allows ~1 request/second. The angle queries are
+# fired from parallel threads, which burst past that and 429 — and because every
+# angle then exhausts its retries, whole searches silently fell back to an
+# arXiv-only pool. Space request STARTS globally instead (applies to retries too).
+_S2_MIN_INTERVAL = float(os.getenv("S2_MIN_INTERVAL", "1.05"))
+_s2_gate = threading.Lock()
+_s2_next_ok = 0.0
+
+
+def _s2_throttle() -> None:
+    global _s2_next_ok
+    with _s2_gate:
+        now = time.monotonic()
+        wait = _s2_next_ok - now
+        _s2_next_ok = max(now, _s2_next_ok) + _S2_MIN_INTERVAL
+    if wait > 0:
+        time.sleep(wait)
+
+
 def _fetch_one(query: str, limit: int) -> list:
     """Fetch up to `limit` papers for a single query string."""
     params = {"query": query, "limit": limit, "fields": S2_FIELDS}
@@ -36,6 +56,7 @@ def _fetch_one(query: str, limit: int) -> list:
     last_body = None
 
     for _ in range(3):
+        _s2_throttle()
         try:
             response = requests.get(url=S2_URL, params=params, headers=headers, timeout=15)
         except requests.RequestException as e:
@@ -137,13 +158,19 @@ def fetch_pool(
     # Merge: S2 first (carries citation counts), then arXiv. Cross-source dedup.
     seen: set = set()
     pool_papers: list = []
+    # S2 returns abstract=null for many landmark papers (publisher licensing).
+    # Those with an arXiv id are recoverable — collect them for a backfill pass
+    # instead of silently dropping the most important papers in the pool.
+    no_abstract: list = []
 
     def _add(paper: dict) -> None:
-        if not (paper.get("abstract") or "").strip():
-            return  # no abstract → can't content-rank
         key = _dedupe_key(paper)
         if key in seen:
             return
+        if not (paper.get("abstract") or "").strip():
+            if (paper.get("externalIds") or {}).get("ArXiv"):
+                no_abstract.append(paper)
+            return  # no abstract (and none recoverable) → can't content-rank
         seen.add(key)
         pool_papers.append(paper)
 
@@ -152,6 +179,23 @@ def fetch_pool(
             _add(paper)
     for paper in arxiv_papers:
         _add(paper)
+
+    # Backfill missing abstracts from arXiv in one batched id_list request,
+    # then run the recovered papers through the same dedup/add path.
+    pending, pending_keys = [], set()
+    for p in no_abstract:
+        key = _dedupe_key(p)
+        if key not in seen and key not in pending_keys:
+            pending_keys.add(key)
+            pending.append(p)
+    if pending:
+        ids = [re.sub(r"v\d+$", "", str(p["externalIds"]["ArXiv"])) for p in pending]
+        found = fetch_arxiv_by_ids(ids)
+        for paper, bare_id in zip(pending, ids):
+            entry = found.get(bare_id)
+            if entry and entry.get("abstract"):
+                paper["abstract"] = entry["abstract"]
+                _add(paper)
 
     return pool_papers
 
