@@ -9,9 +9,10 @@ starlette==0.38.6
 supabase>=2.15.0
 PyJWT[crypto]>=2.8.0
 slowapi>=0.1.9
-# Text embeddings come from the Voyage API (voyage-3.5-lite @ 512-dim) via plain `requests`
-# above — no torch / sentence-transformers, which OOM'd on Railway. Set
-# VOYAGE_API_KEY in the environment.
+# Text embeddings come from a hosted API via plain `requests` above — no torch /
+# sentence-transformers, which OOM'd on Railway. Provider is Gemini
+# (gemini-embedding-001) when GEMINI_API_KEY is set, else Voyage (voyage-3.5-lite);
+# both pinned to 512-dim. See backend/embeddings.py.
 # PDF text extraction for the BYO-PDF library (pure-Python, lightweight).
 pypdf>=4.0.0
 # Required by FastAPI to parse multipart/form-data (PDF uploads) — without it the

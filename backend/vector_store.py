@@ -3,8 +3,9 @@
 Wraps the `doc_chunks` table + `match_doc_chunks` RPC from migration 006. Used by
 the paper cache (global chunks) and the BYO-PDF library (per-user chunks).
 
-Embeddings are produced locally by embeddings.py. All writes are best-effort and
-guarded by `if not sb` so a missing Supabase config never crashes a caller.
+Embeddings come from the hosted provider in embeddings.py (Voyage or Gemini).
+All writes are best-effort and guarded by `if not sb` so a missing Supabase
+config never crashes a caller.
 """
 
 from __future__ import annotations
@@ -73,6 +74,43 @@ def upsert_chunks(
     except Exception as e:
         logger.warning("upsert_chunks failed (%s: %s)", type(e).__name__, e)
         return 0
+
+
+def reembed_all(batch: int = 100) -> dict:
+    """Re-embed every stored chunk with the active provider (after a provider swap).
+
+    Vectors from different providers aren't comparable, so after switching
+    (Voyage ↔ Gemini) every stored embedding must be regenerated or retrieval
+    silently breaks. Pages through doc_chunks by id and rewrites each row's
+    embedding from its stored content. Returns {"updated": n, "failed": n}.
+    """
+    if not sb:
+        return {"updated": 0, "failed": 0, "error": "supabase_unconfigured"}
+    updated = failed = 0
+    offset = 0
+    while True:
+        res = (
+            sb.table("doc_chunks").select("id, content")
+            .order("id").range(offset, offset + batch - 1).execute()
+        )
+        rows = res.data or []
+        if not rows:
+            break
+        vectors = embeddings.embed_texts([r["content"] for r in rows])
+        for row, vec in zip(rows, vectors):
+            try:
+                sb.table("doc_chunks").update(
+                    {"embedding": _to_pgvector(vec)}
+                ).eq("id", row["id"]).execute()
+                updated += 1
+            except Exception as e:
+                logger.warning("reembed update failed for %s (%s: %s)",
+                               row["id"], type(e).__name__, e)
+                failed += 1
+        if len(rows) < batch:
+            break
+        offset += batch
+    return {"updated": updated, "failed": failed}
 
 
 def search(

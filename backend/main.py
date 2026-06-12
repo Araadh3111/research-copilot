@@ -665,7 +665,7 @@ async def account_delete(request: Request):
 # Bump this when you want to confirm a deploy actually shipped. If /admin/key-status
 # returns an older marker (or 404), Railway is still serving stale code — likely a
 # failed build (e.g. torch too large), which is the real cause of a "stuck" 401.
-BUILD_MARKER = "voyage-429-retry-2026-06-11"
+BUILD_MARKER = "gemini-embed-fallback-2026-06-12"
 
 
 @app.get("/admin/key-status")
@@ -738,12 +738,13 @@ async def admin_costs(request: Request):
 
 @app.get("/admin/embed-check")
 async def admin_embed_check(request: Request):
-    """Verify embeddings work on Railway by making a REAL Voyage API call.
+    """Verify embeddings work on Railway by making a REAL provider API call.
 
-    Embeds a probe string via the Voyage API and reports the model name + vector
-    dimension, so a correct deploy shows model 'voyage-3-lite' and dim 512.
-    Guarded by ADMIN_KEY (X-Admin-Key header or ?key=). Returns 500 if VOYAGE_API_KEY
-    is unset or the API call fails (bad key, network, rate limit).
+    Embeds a probe string via the active provider (Voyage or Gemini — see
+    embeddings.py) and reports the provider, model name and vector dimension, so
+    a correct deploy shows the expected provider and dim 512. Guarded by
+    ADMIN_KEY (X-Admin-Key header or ?key=). Returns 500 if the provider's API
+    key is unset or the call fails (bad key, network, rate limit).
     """
     guard = _admin_guard(request)
     if guard is not None:
@@ -751,15 +752,18 @@ async def admin_embed_check(request: Request):
 
     import embeddings
     if not embeddings.is_available():
+        key = "GEMINI_API_KEY" if embeddings.PROVIDER == "gemini" else "VOYAGE_API_KEY"
         return JSONResponse(status_code=500, content={
             "available": False,
-            "error": "VOYAGE_API_KEY is not set — add it in the Railway environment.",
+            "provider": embeddings.PROVIDER,
+            "error": f"{key} is not set — add it in the Railway environment.",
         })
     t = time.monotonic()
     try:
         vec = await asyncio.to_thread(embeddings.embed_query, "researca embedding deploy check")
         return {
             "available": True,
+            "provider": embeddings.PROVIDER,
             "model": embeddings.MODEL_NAME,
             "dim": len(vec),
             "expected_dim": embeddings.EMBED_DIM,
@@ -767,7 +771,36 @@ async def admin_embed_check(request: Request):
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={
-            "available": False, "error": f"{type(e).__name__}: {e}",
+            "available": False, "provider": embeddings.PROVIDER,
+            "error": f"{type(e).__name__}: {e}",
+        })
+
+
+@app.post("/admin/reembed")
+async def admin_reembed(request: Request):
+    """Re-embed every stored doc_chunks row with the ACTIVE embedding provider.
+
+    Run this once after switching providers (Voyage ↔ Gemini): their vectors
+    live in different spaces, so chunks embedded by the old provider would
+    silently stop matching queries embedded by the new one. Chunk text is kept
+    in doc_chunks.content, so no PDF re-upload is needed. Guarded by ADMIN_KEY.
+    """
+    guard = _admin_guard(request)
+    if guard is not None:
+        return guard
+
+    import embeddings
+    import vector_store
+    if not embeddings.is_available():
+        return JSONResponse(status_code=500, content={
+            "error": "embeddings_unavailable", "provider": embeddings.PROVIDER,
+        })
+    try:
+        result = await asyncio.to_thread(vector_store.reembed_all)
+        return {"provider": embeddings.PROVIDER, "model": embeddings.MODEL_NAME, **result}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "error": f"{type(e).__name__}: {e}", "provider": embeddings.PROVIDER,
         })
 
 
