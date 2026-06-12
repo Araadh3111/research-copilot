@@ -95,6 +95,44 @@ def _fetch_one(query: str, limit: int) -> list:
     )
 
 
+# S2's keyword search has two sharp edges (verified by probing the API):
+#   • hyphenated terms often match NOTHING ("parameter-efficient fine-tuning" → 0
+#     results; "parameter efficient fine tuning" → the right papers), and
+#   • long natural-language queries return 0 because every term must match.
+# So when a query comes back empty, walk a fallback ladder instead of silently
+# contributing nothing to the pool.
+_QUERY_STOPWORDS = {
+    "the", "a", "an", "of", "for", "to", "in", "on", "with", "and", "or",
+    "using", "based", "via", "how", "what", "is", "are",
+}
+
+
+def _shorten_query(query: str, max_terms: int = 6) -> str:
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", query) if w.lower() not in _QUERY_STOPWORDS]
+    return " ".join(words[:max_terms])
+
+
+def _fetch_with_fallback(query: str, limit: int) -> list:
+    """_fetch_one, retrying empty result sets with progressively simpler queries."""
+    tried: set = set()
+    last_error: FetchError | None = None
+    for candidate in (query, query.replace("-", " "), _shorten_query(query)):
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+        if not candidate or candidate.lower() in tried:
+            continue
+        tried.add(candidate.lower())
+        try:
+            papers = _fetch_one(candidate, limit)
+        except FetchError as e:
+            last_error = e  # an outage on one rung shouldn't kill the ladder
+            continue
+        if papers:
+            return papers
+    if last_error is not None:
+        raise last_error
+    return []
+
+
 def _dedupe_key(paper: dict):
     """Cross-source identity for a paper: arXiv id > DOI > paperId > title.
 
@@ -135,7 +173,7 @@ def fetch_pool(
     angle_results: dict[str, list] = {}
     arxiv_papers: list = []
     with ThreadPoolExecutor(max_workers=len(queries) + 1) as pool:
-        future_to_query = {pool.submit(_fetch_one, q, pool_size): q for q in queries}
+        future_to_query = {pool.submit(_fetch_with_fallback, q, pool_size): q for q in queries}
         arxiv_future = (
             pool.submit(
                 fetch_arxiv, cleaned_query,
@@ -177,11 +215,12 @@ def fetch_pool(
     for q in queries:
         for paper in angle_results.get(q, []):
             _add(paper)
-    for paper in arxiv_papers:
-        _add(paper)
 
-    # Backfill missing abstracts from arXiv in one batched id_list request,
-    # then run the recovered papers through the same dedup/add path.
+    # Backfill missing abstracts from arXiv in one batched id_list request, then
+    # run the recovered papers through the same dedup/add path. This MUST happen
+    # before the arXiv merge below: the S2 copy carries the citationCount, and if
+    # the arXiv twin (citationCount=None) claims the dedupe key first, landmark
+    # papers sort as zero-citation everywhere downstream.
     pending, pending_keys = [], set()
     for p in no_abstract:
         key = _dedupe_key(p)
@@ -196,6 +235,9 @@ def fetch_pool(
             if entry and entry.get("abstract"):
                 paper["abstract"] = entry["abstract"]
                 _add(paper)
+
+    for paper in arxiv_papers:
+        _add(paper)
 
     return pool_papers
 

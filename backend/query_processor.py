@@ -19,10 +19,14 @@ _USER_TMPL = """\
 Research query: "{query}"
 
 1. Correct any typos and clean the phrasing into a canonical form.
-2. Generate 2–3 distinct search angles that approach the same research topic \
-from different facets (e.g. mechanisms, applications, comparisons, clinical \
-outcomes, historical development). Each angle should be a short search string, \
-not a sentence.
+2. Generate 3 distinct search angles for a keyword-matching academic search \
+engine (every term must match, so long strings return nothing). Each angle: \
+2–5 keywords, no hyphens, no filler words, NOT a repeat of the cleaned query. \
+Approach different facets — the core method/term, the broader family or \
+problem it belongs to, and key alternatives/extensions. \
+Example for "LoRA low-rank adaptation for parameter-efficient fine-tuning": \
+["low rank adaptation language models", "parameter efficient fine tuning", \
+"adapter tuning quantized LLM"].
 
 Respond with ONLY this JSON shape (no other text):
 {{

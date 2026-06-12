@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import math
 import os
+import threading
 import time
 
 import requests
@@ -73,6 +74,36 @@ _BATCH = min(int(os.getenv("VOYAGE_BATCH", "128")), 100)
 _MAX_RETRIES = int(os.getenv("VOYAGE_MAX_RETRIES", "4"))
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 
+# Gemini's free embedding tier is generous on requests (~100/min) but tight on
+# TOKENS (~30K/min) — one PDF's chunk burst (1200-char chunks ≈ 300 tokens each)
+# blows that cap in a single 100-text batch. So the Gemini path uses smaller
+# batches and paces itself against a rolling 60-second token budget instead of
+# slamming into 429s and exhausting retries.
+_GEMINI_BATCH = int(os.getenv("GEMINI_BATCH", "24"))
+_GEMINI_TPM = int(os.getenv("GEMINI_TPM", "24000"))  # safety margin under 30K
+_tpm_lock = threading.Lock()
+_tpm_window: list[tuple[float, int]] = []  # (monotonic time, est tokens) per request
+
+
+def _est_tokens(texts: list[str]) -> int:
+    """Rough token estimate (~4 chars/token) plus per-text overhead."""
+    return sum(len(t) for t in texts) // 4 + 8 * len(texts)
+
+
+def _gemini_pace(tokens: int) -> None:
+    """Block until ``tokens`` fits the rolling per-minute Gemini token budget."""
+    while True:
+        with _tpm_lock:
+            now = time.monotonic()
+            while _tpm_window and now - _tpm_window[0][0] > 60:
+                _tpm_window.pop(0)
+            spent = sum(t for _, t in _tpm_window)
+            if spent + tokens <= _GEMINI_TPM or not _tpm_window:
+                _tpm_window.append((now, tokens))
+                return
+            wait = 60 - (now - _tpm_window[0][0]) + 0.5
+        time.sleep(min(max(wait, 0.5), 61))
+
 
 def is_available() -> bool:
     """True if embeddings can be produced (the active provider's key is set)."""
@@ -104,6 +135,7 @@ def _embed_voyage(batch: list[str], input_type: str) -> list[list[float]]:
 
 
 def _embed_gemini(batch: list[str], input_type: str) -> list[list[float]]:
+    _gemini_pace(_est_tokens(batch))
     headers = {"x-goog-api-key": _GEMINI_KEY, "Content-Type": "application/json"}
     task = "RETRIEVAL_QUERY" if input_type == "query" else "RETRIEVAL_DOCUMENT"
     payload = {
@@ -134,9 +166,10 @@ def _embed(texts: list[str], input_type: str) -> list[list[float]]:
         raise RuntimeError(f"{key} is not set — cannot produce embeddings.")
 
     embed_batch = _embed_gemini if PROVIDER == "gemini" else _embed_voyage
+    batch_size = _GEMINI_BATCH if PROVIDER == "gemini" else _BATCH
     out: list[list[float]] = []
-    for i in range(0, len(texts), _BATCH):
-        out.extend(embed_batch(texts[i : i + _BATCH], input_type))
+    for i in range(0, len(texts), batch_size):
+        out.extend(embed_batch(texts[i : i + batch_size], input_type))
     return out
 
 
@@ -151,14 +184,31 @@ def _post_with_retry(url: str, headers: dict, payload: dict) -> requests.Respons
         resp = requests.post(url, headers=headers, json=payload, timeout=_TIMEOUT)
         if resp.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES:
             return resp
-        # Prefer the server's Retry-After (seconds); else exponential backoff.
-        retry_after = resp.headers.get("Retry-After")
-        try:
-            delay = float(retry_after) if retry_after else 2.0 ** attempt
-        except ValueError:
-            delay = 2.0 ** attempt
-        time.sleep(min(delay, 30.0))
+        time.sleep(min(_retry_delay(resp, attempt), 65.0))
     return resp  # pragma: no cover — loop always returns inside
+
+
+def _retry_delay(resp: requests.Response, attempt: int) -> float:
+    """How long to wait before retrying: server hint > exponential backoff.
+
+    Voyage sends a Retry-After header; Google sends RetryInfo with a
+    "retryDelay" like "39s" inside the 429's JSON error details. A TPM-limit
+    429 only clears when the 60s window rolls, so honoring the hint matters.
+    """
+    retry_after = resp.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return float(retry_after)
+        except ValueError:
+            pass
+    try:
+        for detail in resp.json().get("error", {}).get("details", []):
+            delay = str(detail.get("retryDelay", "")).rstrip("s")
+            if delay:
+                return float(delay)
+    except Exception:
+        pass
+    return 2.0 ** attempt
 
 
 def embed_texts(texts: list[str]) -> list[list[float]]:
