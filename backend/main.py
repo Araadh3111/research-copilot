@@ -25,6 +25,7 @@ from usage import (
 )
 from synthesizer import FORCE_SONNET
 from supabase_client import sb
+import embeddings
 import cost_tracker
 from costs import log_search_cost, cost_dashboard
 from sources import coverage_dict, coverage_note
@@ -613,8 +614,17 @@ async def library_upload(request: Request, file: UploadFile = File(...)):
         )
     except LibraryError as e:
         return JSONResponse(status_code=400, content={"error": "library_error", "message": str(e)})
+    except embeddings.EmbeddingQuotaError:
+        # The embedding provider's DAILY free-tier quota is spent (resets midnight
+        # Pacific). Retrying can't help today, so surface a calm, human 503 with a
+        # `message` the frontend already renders — not a scary raw stack-trace detail.
+        return JSONResponse(status_code=503, content={
+            "error": "embeddings_at_capacity",
+            "message": "Indexing is temporarily at capacity for today. Please try "
+                       "this upload again in a few hours.",
+        })
     except Exception as e:
-        # Anything else (Voyage API error, dimension/DB mismatch, etc.) would
+        # Anything else (provider API error, dimension/DB mismatch, etc.) would
         # otherwise escape as an unhandled 500 — and a 500 generated outside the
         # CORS middleware ships WITHOUT Access-Control-Allow-Origin, so the browser
         # blocks it and the user only sees "Failed to fetch", hiding the real cause.
