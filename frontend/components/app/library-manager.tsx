@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BookOpen, Upload, Trash2, FileText, Lock, AlertTriangle, ArrowLeft } from "lucide-react"
+import { BookOpen, Upload, Trash2, FileText, Lock, AlertTriangle, ArrowLeft, Loader2 } from "lucide-react"
 
 import { API_BASE_URL } from "@/lib/api"
 import { track } from "@/lib/analytics"
@@ -12,7 +12,18 @@ import { createClient } from "@/utils/supabase/client"
 // see your storage quota, and exercise data/account deletion. Uploads are private
 // to you, never shared, and never used to train models.
 
-type Doc = { id: string; title: string; filename?: string; pages?: number; chunk_count?: number }
+type DocStatus = "indexing" | "ready" | "paused" | "failed"
+type Doc = {
+  id: string
+  title: string
+  filename?: string
+  pages?: number
+  chunk_count?: number
+  status?: DocStatus
+  chunks_total?: number
+  chunks_done?: number
+  error?: string
+}
 type LibraryState = { documents: Doc[]; count: number; cap: number; tier: string }
 
 export function LibraryManager() {
@@ -45,6 +56,17 @@ export function LibraryManager() {
 
   useEffect(() => { load() }, [load])
 
+  // Poll while any paper is still being indexed in the background, so the row
+  // flips "Indexing…" → "Ready" (and progress ticks up) without a manual refresh.
+  const indexing = state?.documents.some(
+    (d) => d.status === "indexing" || d.status === "paused",
+  )
+  useEffect(() => {
+    if (!indexing) return
+    const id = setInterval(() => { load() }, 4000)
+    return () => clearInterval(id)
+  }, [indexing, load])
+
   async function upload() {
     if (!file || !consent || busy) return
     setBusy(true); setError(null); setNotice(null)
@@ -60,8 +82,8 @@ export function LibraryManager() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.message || data?.detail || `Upload failed (HTTP ${res.status}).`)
-      track("pdf_uploaded", { pages: data?.pages ?? null, chunks: data?.chunk_count ?? null })
-      setNotice(`Added “${data.title}”.`)
+      track("pdf_uploaded", { pages: data?.pages ?? null, chunks: data?.chunks_total ?? null })
+      setNotice(`Added “${data.title}” — indexing now, it’ll be searchable shortly.`)
       setFile(null); setConsent(false)
       if (fileRef.current) fileRef.current.value = ""
       await load()
@@ -100,12 +122,15 @@ export function LibraryManager() {
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
-      <button
-        onClick={() => router.push("/")}
+      {/* Full navigation (not router.push) so the server re-runs the auth check and
+          renders the search app — a client-side push to "/" can land on the cached
+          logged-out landing instead. Mirrors the header's <a href="/library">. */}
+      <a
+        href="/"
         className="mb-6 inline-flex items-center gap-1.5 text-sm text-stone transition-colors hover:text-ink"
       >
         <ArrowLeft className="size-4" /> Back to search
-      </button>
+      </a>
 
       <div className="flex items-center gap-2.5">
         <span className="inline-flex size-9 items-center justify-center rounded-lg bg-parchment text-ink">
@@ -163,12 +188,31 @@ export function LibraryManager() {
         )}
         {state?.documents.map((d) => (
           <div key={d.id} className="flex items-center gap-3 rounded-xl border border-line bg-cream p-3.5">
-            <FileText className="size-4 shrink-0 text-stone" />
+            {d.status === "indexing" || d.status === "paused" ? (
+              <Loader2 className="size-4 shrink-0 animate-spin text-gold" />
+            ) : (
+              <FileText className="size-4 shrink-0 text-stone" />
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-ink">{d.title}</p>
-              <p className="text-xs text-stone-light">
-                {d.pages ? `${d.pages} pages · ` : ""}{d.chunk_count ?? 0} chunks
-              </p>
+              {d.status === "indexing" ? (
+                <p className="text-xs text-gold">
+                  Indexing… {d.chunks_done ?? 0}
+                  {d.chunks_total ? `/${d.chunks_total}` : ""} chunks
+                </p>
+              ) : d.status === "paused" ? (
+                <p className="text-xs text-stone-light">
+                  {d.error || "Indexing paused — resumes automatically."}
+                </p>
+              ) : d.status === "failed" ? (
+                <p className="text-xs text-red-600">
+                  {d.error || "Indexing failed. Try deleting and re-uploading."}
+                </p>
+              ) : (
+                <p className="text-xs text-stone-light">
+                  {d.pages ? `${d.pages} pages · ` : ""}{d.chunk_count ?? 0} chunks
+                </p>
+              )}
             </div>
             <button
               onClick={() => remove(d.id)}

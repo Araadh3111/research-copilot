@@ -30,7 +30,8 @@ import cost_tracker
 from costs import log_search_cost, cost_dashboard
 from sources import coverage_dict, coverage_note
 from library import (
-    add_document, list_documents, delete_document, delete_all_documents,
+    create_document, index_document, pending_index_jobs,
+    list_documents, delete_document, delete_all_documents,
     count_documents, search_library, storage_cap, LibraryError,
 )
 from account import purge_user_data
@@ -117,6 +118,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Background library indexing (migration 010) ───────────────────────────────
+# Embedding a PDF is slow (paced under the provider's token cap) so it runs OUT
+# of the upload request: the upload stores the doc as 'indexing' and we embed in
+# a detached task. A periodic sweep re-spawns any 'indexing'/'paused' doc, so a
+# redeploy mid-embed or a spent free-tier quota self-heals without user action.
+_index_tasks: dict[str, asyncio.Task] = {}
+INDEX_RESUME_INTERVAL = int(os.getenv("INDEX_RESUME_INTERVAL", "600"))
+
+
+def _spawn_index(owner_id: str, doc_id: str) -> None:
+    """Start (or skip if already running) the background embed for one doc."""
+    existing = _index_tasks.get(doc_id)
+    if existing and not existing.done():
+        return
+
+    async def _run() -> None:
+        try:
+            await asyncio.to_thread(index_document, owner_id, doc_id)
+        finally:
+            _index_tasks.pop(doc_id, None)
+
+    _index_tasks[doc_id] = asyncio.create_task(_run())
+
+
+@app.on_event("startup")
+async def _start_index_sweeper() -> None:
+    async def _loop() -> None:
+        while True:
+            try:
+                jobs = await asyncio.to_thread(
+                    pending_index_jobs, frozenset(_index_tasks)
+                )
+                for owner_id, doc_id in jobs:
+                    _spawn_index(owner_id, doc_id)
+            except Exception as e:  # a sweep failure must never kill the loop
+                print(f"[indexer] sweep failed: {type(e).__name__}: {e}", flush=True)
+            await asyncio.sleep(INDEX_RESUME_INTERVAL)
+
+    asyncio.create_task(_loop())
 
 
 class SearchRequest(BaseModel):
@@ -602,7 +644,12 @@ async def library_list(request: Request):
 
 @app.post("/library/upload")
 async def library_upload(request: Request, file: UploadFile = File(...)):
-    """Upload a PDF → extract, chunk, embed, store privately in the user's library."""
+    """Accept a PDF → store it immediately as 'indexing', embed in the background.
+
+    Returns 202 in ~seconds regardless of paper size; the (slow, rate-limited)
+    embedding runs detached so a big PDF can't time out the request. The client
+    polls GET /library for the doc to flip 'indexing' → 'ready'.
+    """
     user_id = await _require_user(request)
     if not user_id:
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
@@ -610,32 +657,24 @@ async def library_upload(request: Request, file: UploadFile = File(...)):
     data = await file.read()
     try:
         doc = await asyncio.to_thread(
-            add_document, user_id, tier, data=data, filename=file.filename, title=None
+            create_document, user_id, tier, data=data, filename=file.filename, title=None
         )
     except LibraryError as e:
         return JSONResponse(status_code=400, content={"error": "library_error", "message": str(e)})
-    except embeddings.EmbeddingQuotaError:
-        # The embedding provider's DAILY free-tier quota is spent (resets midnight
-        # Pacific). Retrying can't help today, so surface a calm, human 503 with a
-        # `message` the frontend already renders — not a scary raw stack-trace detail.
-        return JSONResponse(status_code=503, content={
-            "error": "embeddings_at_capacity",
-            "message": "Indexing is temporarily at capacity for today. Please try "
-                       "this upload again in a few hours.",
-        })
     except Exception as e:
-        # Anything else (provider API error, dimension/DB mismatch, etc.) would
-        # otherwise escape as an unhandled 500 — and a 500 generated outside the
-        # CORS middleware ships WITHOUT Access-Control-Allow-Origin, so the browser
-        # blocks it and the user only sees "Failed to fetch", hiding the real cause.
-        # Return a CORS-wrapped JSON error and log the detail for Railway logs.
+        # Anything else (DB mismatch, parse blow-up, etc.) would otherwise escape as
+        # an unhandled 500 — and a 500 generated outside the CORS middleware ships
+        # WITHOUT Access-Control-Allow-Origin, so the browser blocks it and the user
+        # only sees "Failed to fetch", hiding the real cause. Return a CORS-wrapped
+        # JSON error and log the detail for Railway logs.
         import traceback
         traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={"error": "upload_failed", "detail": f"{type(e).__name__}: {e}"},
         )
-    return doc
+    _spawn_index(user_id, doc["id"])
+    return JSONResponse(status_code=202, content=doc)
 
 
 @app.delete("/library/{doc_id}")

@@ -11,11 +11,17 @@ config never crashes a caller.
 from __future__ import annotations
 
 import logging
+import os
 
 from supabase_client import sb
 import embeddings
 
 logger = logging.getLogger("vector_store")
+
+# How many chunks to embed+write per round trip during background indexing. Small
+# enough that progress (and resume granularity) is fine-grained; embed_texts still
+# sub-batches under the provider's TPM cap inside each call.
+_STORE_BATCH = int(os.getenv("STORE_BATCH", "24"))
 
 
 def _to_pgvector(vec: list[float]) -> str:
@@ -74,6 +80,63 @@ def upsert_chunks(
     except Exception as e:
         logger.warning("upsert_chunks failed (%s: %s)", type(e).__name__, e)
         return 0
+
+
+def store_pending_chunks(
+    *,
+    source_type: str,
+    doc_id: str,
+    owner_id: str | None,
+    chunks: list[str],
+    metadata: dict | None = None,
+    on_progress=None,
+) -> int:
+    """Embed + store ``chunks`` in resumable batches; return total chunks stored.
+
+    Unlike ``upsert_chunks`` (one all-or-nothing call), this writes per batch and
+    skips chunk indexes already stored for this doc — so a background worker that
+    died (redeploy) or paused (daily-quota wall) resumes without re-embedding what
+    it already did. ``on_progress(done)`` is called after each batch with the
+    running total. Embedding errors (incl. EmbeddingQuotaError) propagate so the
+    caller can record the right status.
+    """
+    if not sb or not chunks:
+        return 0
+
+    existing = (
+        sb.table("doc_chunks").select("chunk_index")
+        .eq("source_type", source_type).eq("doc_id", doc_id)
+    )
+    existing = (existing.is_("owner_id", "null") if owner_id is None
+                else existing.eq("owner_id", owner_id))
+    done_idx = {r["chunk_index"] for r in (existing.execute().data or [])}
+    todo = [(i, c) for i, c in enumerate(chunks) if i not in done_idx]
+    done = len(done_idx)
+    if on_progress and done:
+        on_progress(done)
+
+    for j in range(0, len(todo), _STORE_BATCH):
+        slice_ = todo[j : j + _STORE_BATCH]
+        vectors = embeddings.embed_texts([c for _, c in slice_])
+        rows = [
+            {
+                "owner_id": owner_id,
+                "source_type": source_type,
+                "doc_id": doc_id,
+                "chunk_index": i,
+                "content": c,
+                "embedding": _to_pgvector(vec),
+                "metadata": metadata or {},
+            }
+            for (i, c), vec in zip(slice_, vectors)
+        ]
+        sb.table("doc_chunks").upsert(
+            rows, on_conflict="source_type,doc_id,chunk_index,owner_id"
+        ).execute()
+        done += len(rows)
+        if on_progress:
+            on_progress(done)
+    return done
 
 
 def reembed_all(batch: int = 100) -> dict:
